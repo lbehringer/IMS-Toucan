@@ -298,11 +298,7 @@ class ToucanTTS(torch.nn.Module):
                                            energy_variance_scale=energy_variance_scale,
                                            pause_duration_scaling_factor=pause_duration_scaling_factor)
 
-        outs_indexed = list()
-        for out in outs:
-            outs_indexed.append(torch.argmax(out.squeeze(), dim=0))
-
-        outs = torch.stack(outs_indexed)
+        outs = outs.squeeze().view(self.num_codebooks * self.codebook_dim, -1)
 
         if return_duration_pitch_energy:
             return outs, predicted_durations, pitch_predictions, energy_predictions

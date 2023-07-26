@@ -428,11 +428,8 @@ class ToucanTTS(torch.nn.Module):
                                            utterance_embedding=utterance_embeddings,
                                            lang_ids=lang_id)  # (1, L, odim)
         self.train()
-        outs_indexed = list()
-        for out in outs:
-            outs_indexed.append(torch.argmax(out.squeeze(), dim=0))
+        outs = outs.squeeze().view(self.num_codebooks * self.codebook_dim, -1)
 
-        outs = torch.stack(outs_indexed)
         if return_duration_pitch_energy:
             return outs, duration_predictions, pitch_predictions, energy_predictions
         return outs
