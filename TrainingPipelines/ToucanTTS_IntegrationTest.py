@@ -53,7 +53,6 @@ def run(gpu_id, resume_checkpoint, finetune, model_dir, resume, use_wandb, wandb
                fine_tune=finetune,
                resume=resume,
                steps=2000,
-               postnet_start_steps=200,
                use_discriminator=True,
                use_wandb=use_wandb,
                train_embed=True)
