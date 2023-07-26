@@ -19,14 +19,14 @@ from run_weight_averaging import save_model_for_use
 
 def collate_and_pad(batch):
     # text, text_len, speech, speech_len, durations, energy, pitch, utterance condition, language_id
-    return (pad_sequence([datapoint[0].squeeze() for datapoint in batch], batch_first=True),
-            torch.stack([datapoint[1] for datapoint in batch]),
-            pad_sequence([datapoint[2].squeeze() for datapoint in batch], batch_first=True),
-            torch.stack([datapoint[3] for datapoint in batch]),
-            pad_sequence([datapoint[4].squeeze() for datapoint in batch], batch_first=True),
-            pad_sequence([datapoint[5].squeeze() for datapoint in batch], batch_first=True),
-            pad_sequence([datapoint[6].squeeze() for datapoint in batch], batch_first=True),
-            None,
+    return (pad_sequence([datapoint[0] for datapoint in batch], batch_first=True),
+            torch.stack([datapoint[1] for datapoint in batch]).squeeze(1),
+            pad_sequence([datapoint[2] for datapoint in batch], batch_first=True),
+            torch.stack([datapoint[3] for datapoint in batch]).squeeze(1),
+            pad_sequence([datapoint[4] for datapoint in batch], batch_first=True),
+            pad_sequence([datapoint[5] for datapoint in batch], batch_first=True),
+            pad_sequence([datapoint[6] for datapoint in batch], batch_first=True),
+            pad_sequence([datapoint[7] for datapoint in batch], batch_first=True),
             torch.stack([datapoint[8] for datapoint in batch]))
 
 
@@ -129,8 +129,8 @@ def train_loop(net,
         # we sum the loss for each task, as we would do for the
         # second order regular MAML, but we do it only over one
         # step (i.e. iterations of inner loop = 1)
-        style_embedding = style_embedding_function(batch_of_feature_sequences=batch[2].to(device),
-                                                   batch_of_feature_sequence_lengths=batch[3].to(device))
+        style_embedding = style_embedding_function(batch_of_feature_sequences=gold_speech,
+                                                   batch_of_feature_sequence_lengths=speech_lengths)
         classification_loss, duration_loss, pitch_loss, energy_loss = net(
             text_tensors=text_tensors,
             text_lengths=text_lengths,
@@ -190,10 +190,10 @@ def train_loop(net,
 
             if use_wandb:
                 wandb.log({
-                    "classification_loss": round(sum(classification_losses_total) / len(classification_losses_total), 5),
-                    "duration_loss"      : round(sum(duration_losses_total) / len(duration_losses_total), 5),
-                    "pitch_loss"         : round(sum(pitch_losses_total) / len(pitch_losses_total), 5),
-                    "energy_loss"        : round(sum(energy_losses_total) / len(energy_losses_total), 5),
+                    "l1_criterion" : round(sum(classification_losses_total) / len(classification_losses_total), 5),
+                    "duration_loss": round(sum(duration_losses_total) / len(duration_losses_total), 5),
+                    "pitch_loss"   : round(sum(pitch_losses_total) / len(pitch_losses_total), 5),
+                    "energy_loss"  : round(sum(energy_losses_total) / len(energy_losses_total), 5),
                 }, step=step_counter)
 
             try:

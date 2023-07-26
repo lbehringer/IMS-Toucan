@@ -9,7 +9,6 @@ from Layers.LengthRegulator import LengthRegulator
 from Layers.VariancePredictor import VariancePredictor
 from Preprocessing.articulatory_features import get_feature_to_index_lookup
 from TTSTrainingInterfaces.ToucanTTS.ToucanTTSLoss import ToucanTTSLoss
-from TTSTrainingInterfaces.ToucanTTS.wavenet import WN
 from Utility.utils import initialize
 from Utility.utils import make_non_pad_mask
 from Utility.utils import make_pad_mask
@@ -94,6 +93,7 @@ class ToucanTTS(torch.nn.Module):
                  lang_embs=8000,
                  use_conditional_layernorm_embedding_integration=False,
                  num_codebooks=9,
+                 codebook_dim=8,
                  codebook_size=1024,
                  use_wavenet_postnet=False):
         super().__init__()
@@ -140,8 +140,8 @@ class ToucanTTS(torch.nn.Module):
             "lang_embs"                                      : lang_embs,
             "use_conditional_layernorm_embedding_integration": use_conditional_layernorm_embedding_integration,
             "num_codebooks"                                  : num_codebooks,
-            "codebook_size"                                  : codebook_size,
-            "use_wavenet_postnet"                            : use_wavenet_postnet
+            "codebook_dim"                                   : codebook_dim,
+            "codebook_dim"                                   : codebook_size,
         }
 
         self.input_feature_dimensions = input_feature_dimensions
@@ -150,8 +150,7 @@ class ToucanTTS(torch.nn.Module):
         self.multilingual_model = lang_embs is not None
         self.multispeaker_model = utt_embed_dim is not None
         self.num_codebooks = num_codebooks
-        self.codebook_size = codebook_size
-        self.use_wavenet_postnet = use_wavenet_postnet
+        self.codebook_size = codebook_dim
 
         articulatory_feature_embedding = Sequential(Linear(input_feature_dimensions, 100), Tanh(), Linear(100, attention_dimension))
         self.encoder = Conformer(conformer_type="encoder",
@@ -226,16 +225,7 @@ class ToucanTTS(torch.nn.Module):
                                  use_output_norm=False,
                                  utt_embed=utt_embed_dim,
                                  use_conditional_layernorm_embedding_integration=use_conditional_layernorm_embedding_integration)
-        if self.use_wavenet_postnet:
-            self.wn = WN(hidden_size=attention_dimension,
-                         kernel_size=3,
-                         dilation_rate=2,
-                         n_layers=8,
-                         c_cond=attention_dimension,
-                         p_dropout=0.1,
-                         share_cond_layers=False,
-                         is_BTC=False,
-                         use_weightnorm=True)
+
 
         self.hierarchical_classifier = torch.nn.ModuleList()
         for head in range(self.num_codebooks):
@@ -362,9 +352,6 @@ class ToucanTTS(torch.nn.Module):
         decoder_masks = make_non_pad_mask(speech_lengths, device=speech_lengths.device).unsqueeze(-2) if speech_lengths is not None and not is_inference else None
         decoded_speech, _ = self.decoder(upsampled_enriched_encoded_texts, decoder_masks, utterance_embedding=utterance_embedding)
 
-        if self.use_wavenet_postnet:
-            decoded_speech = decoded_speech + self.wn(x=decoded_speech.transpose(1, 2), nonpadding=decoder_masks, cond=upsampled_enriched_encoded_texts.transpose(1, 2)).transpose(1, 2)
-
         # The codebooks are hierarchical: The first influences the second, but the second not the first.
         # This is because they are residual vector quantized, which makes them extremely space efficient
         # with just a few discrete tokens, but terribly difficult to predict.
@@ -464,7 +451,7 @@ if __name__ == '__main__':
     dummy_text_batch = torch.randint(low=0, high=2, size=[3, 3, 62]).float()  # [Batch, Sequence Length, Features per Phone]
     dummy_text_lens = torch.LongTensor([2, 3, 3])
 
-    dummy_speech_batch = torch.randn([3, 9, 30, 1024])  # [Batch, Sequence Length, Spectrogram Buckets]
+    dummy_speech_batch = torch.randn([3, 9, 30, 8])  # [Batch, Sequence Length, Spectrogram Buckets]
     dummy_speech_lens = torch.LongTensor([10, 30, 20])
 
     dummy_durations = torch.LongTensor([[10, 0, 0], [10, 15, 5], [5, 5, 10]])
@@ -493,7 +480,7 @@ if __name__ == '__main__':
     dummy_text_batch = torch.randint(low=0, high=2, size=[3, 3, 62]).float()  # [Batch, Sequence Length, Features per Phone]
     dummy_text_lens = torch.LongTensor([2, 3, 3])
 
-    dummy_speech_batch = torch.randn([3, 9, 30, 1024])  # [Batch, Sequence Length, Spectrogram Buckets]
+    dummy_speech_batch = torch.randn([3, 9, 30, 8])  # [Batch, Sequence Length, Spectrogram Buckets]
     dummy_speech_lens = torch.LongTensor([10, 30, 20])
 
     dummy_durations = torch.LongTensor([[10, 0, 0], [10, 15, 5], [5, 5, 10]])
@@ -530,7 +517,7 @@ if __name__ == '__main__':
     dummy_text_batch = torch.randint(low=0, high=2, size=[2, 3, 62]).float()  # [Batch, Sequence Length, Features per Phone]
     dummy_text_lens = torch.LongTensor([2, 3])
 
-    dummy_speech_batch = torch.randn([2, 9, 30, 1024])  # [Batch, Sequence Length, Spectrogram Buckets]
+    dummy_speech_batch = torch.randn([2, 9, 30, 8])  # [Batch, Sequence Length, Spectrogram Buckets]
     dummy_speech_lens = torch.LongTensor([10, 30])
 
     dummy_durations = torch.LongTensor([[10, 0, 0], [10, 15, 5]])

@@ -9,7 +9,6 @@ from Layers.DurationPredictor import DurationPredictor
 from Layers.LengthRegulator import LengthRegulator
 from Layers.VariancePredictor import VariancePredictor
 from Preprocessing.articulatory_features import get_feature_to_index_lookup
-from TTSTrainingInterfaces.ToucanTTS.wavenet import WN
 from Utility.utils import make_non_pad_mask
 
 
@@ -62,17 +61,16 @@ class ToucanTTS(torch.nn.Module):
         lang_embs = config.lang_embs
         use_conditional_layernorm_embedding_integration = config.use_conditional_layernorm_embedding_integration
         num_codebooks = config.num_codebooks
+        codebook_dim = config.codebook_dim
         codebook_size = config.codebook_size
-        use_wavenet_postnet = config.use_wavenet_postnet
 
         self.num_codebooks = num_codebooks
-        self.codebook_size = codebook_size
+        self.codebook_dim = codebook_dim
         self.input_feature_dimensions = input_feature_dimensions
         self.attention_dimension = attention_dimension
         self.use_scaled_pos_enc = use_scaled_positional_encoding
         self.multilingual_model = lang_embs is not None
         self.multispeaker_model = utt_embed_dim is not None
-        self.use_wavenet_postnet = use_wavenet_postnet
 
         articulatory_feature_embedding = Sequential(Linear(input_feature_dimensions, 100), Tanh(), Linear(100, attention_dimension))
         self.encoder = Conformer(conformer_type="encoder",
@@ -152,20 +150,10 @@ class ToucanTTS(torch.nn.Module):
                                  use_output_norm=False,
                                  utt_embed=utt_embed_dim,
                                  use_conditional_layernorm_embedding_integration=use_conditional_layernorm_embedding_integration)
-        if self.use_wavenet_postnet:
-            self.wn = WN(hidden_size=attention_dimension,
-                         kernel_size=3,
-                         dilation_rate=2,
-                         n_layers=8,
-                         c_cond=attention_dimension,
-                         p_dropout=0.1,
-                         share_cond_layers=False,
-                         is_BTC=False,
-                         use_weightnorm=True)
 
         self.hierarchical_classifier = torch.nn.ModuleList()
         for head in range(self.num_codebooks):
-            self.hierarchical_classifier.append(torch.nn.Linear(attention_dimension + head * self.codebook_size, self.codebook_size))
+            self.hierarchical_classifier.append(torch.nn.Linear(attention_dimension + head * self.codebook_dim, self.codebook_dim))
 
         self.load_state_dict(weights)
         self.eval()
@@ -223,9 +211,6 @@ class ToucanTTS(torch.nn.Module):
         # decoding spectrogram
         decoded_speech, _ = self.decoder(upsampled_enriched_encoded_texts, None, utterance_embedding=utterance_embedding)
 
-        if self.use_wavenet_postnet:
-            decoded_speech = decoded_speech + self.wn(x=decoded_speech.transpose(1, 2), nonpadding=None, cond=upsampled_enriched_encoded_texts.transpose(1, 2)).transpose(1, 2)
-
         # The codebooks are hierarchical: The first influences the second, but the second not the first.
         # This is because they are residual vector quantized, which makes them extremely space efficient
         # with just a few discrete tokens, but terribly difficult to predict.
@@ -233,12 +218,11 @@ class ToucanTTS(torch.nn.Module):
         predicted_indexes.append(decoded_speech)
         for classifier_head in self.hierarchical_classifier:
             # each codebook considers all previous codebooks.
-            prediction_for_current_codebook = classifier_head(torch.cat(predicted_indexes, dim=2))
-            predicted_indexes.append(torch.nn.functional.softmax(prediction_for_current_codebook, dim=2))
+            predicted_indexes.append(classifier_head(torch.cat(predicted_indexes, dim=2)))
 
         indexes = torch.cat(predicted_indexes[1:], dim=2)
         # [Batch, Sequence, Hidden]
-        indexes = indexes.view(decoded_speech.size(0), decoded_speech.size(1), self.num_codebooks, self.codebook_size)
+        indexes = indexes.view(decoded_speech.size(0), decoded_speech.size(1), self.num_codebooks, self.codebook_dim)
         # [Batch, Sequence, Codebook, Classes]
         indexes = indexes.transpose(1, 2)
         # [Batch, Codebook, Sequence, Classes]

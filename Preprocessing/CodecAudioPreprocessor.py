@@ -53,7 +53,7 @@ class CodecAudioPreprocessor:
 
     @torch.inference_mode()
     def indexes_to_one_hot(self, indexes):
-        return torch.nn.functional.one_hot(indexes.squeeze(), num_classes=self.model.quantizer.codebook_size)
+        return torch.nn.functional.one_hot(indexes.squeeze(), num_classes=self.model.quantizer.codebook_dim)
 
     @torch.inference_mode()
     def indexes_to_codec_frames(self, codebook_indexes):

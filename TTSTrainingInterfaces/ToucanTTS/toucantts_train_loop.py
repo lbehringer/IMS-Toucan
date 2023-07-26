@@ -24,24 +24,9 @@ from run_weight_averaging import save_model_for_use
 
 def collate_and_pad(batch):
     # text, text_len, speech, speech_len, durations, energy, pitch, utterance condition, language_id
-    # Assuming you have a list of tensors with shape [9, l, 1024]
-    tensor_list = [datapoint[2] for datapoint in batch]
-
-    max_length = max([tensor.size(1) for tensor in tensor_list])
-
-    # Pad tensors in the list
-    padded_tensors = []
-    for tensor in tensor_list:
-        padding = torch.zeros(tensor.size(0), max_length - tensor.size(1), tensor.size(2))
-        padded_tensor = torch.cat([tensor, padding], dim=1)
-        padded_tensors.append(padded_tensor)
-
-    # Convert the list of padded tensors to a single tensor
-    padded_tensor = torch.stack(padded_tensors)
-
     return (pad_sequence([datapoint[0] for datapoint in batch], batch_first=True),
             torch.stack([datapoint[1] for datapoint in batch]).squeeze(1),
-            padded_tensor,
+            pad_sequence([datapoint[2] for datapoint in batch], batch_first=True),
             torch.stack([datapoint[3] for datapoint in batch]).squeeze(1),
             pad_sequence([datapoint[4] for datapoint in batch], batch_first=True),
             pad_sequence([datapoint[5] for datapoint in batch], batch_first=True),
@@ -201,10 +186,10 @@ def train_loop(net,
         print("Steps:                  {}\n".format(step_counter))
         if use_wandb:
             wandb.log({
-                "classification_loss": round(sum(classification_losses_total) / len(classification_losses_total), 5),
-                "duration_loss"      : round(sum(duration_losses_total) / len(duration_losses_total), 5),
-                "pitch_loss"         : round(sum(pitch_losses_total) / len(pitch_losses_total), 5),
-                "energy_loss"        : round(sum(energy_losses_total) / len(energy_losses_total), 5),
+                "l1_criterion" : round(sum(classification_losses_total) / len(classification_losses_total), 5),
+                "duration_loss": round(sum(duration_losses_total) / len(duration_losses_total), 5),
+                "pitch_loss"   : round(sum(pitch_losses_total) / len(pitch_losses_total), 5),
+                "energy_loss"  : round(sum(energy_losses_total) / len(energy_losses_total), 5),
             }, step=step_counter)
             if use_discriminator:
                 wandb.log({
