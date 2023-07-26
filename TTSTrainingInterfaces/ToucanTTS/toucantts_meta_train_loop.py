@@ -79,7 +79,8 @@ def train_loop(net,
     optimizer = torch.optim.AdamW(net.parameters(), lr=lr)
     scheduler = WarmupScheduler(optimizer, peak_lr=lr, warmup_steps=warmup_steps, max_steps=steps)
     steps_run_previously = 0
-    classification_losses_total = list()
+    regression_losses_total = list()
+    glow_losses_total = list()
     duration_losses_total = list()
     pitch_losses_total = list()
     energy_losses_total = list()
@@ -131,7 +132,7 @@ def train_loop(net,
         # step (i.e. iterations of inner loop = 1)
         style_embedding = style_embedding_function(batch_of_feature_sequences=gold_speech,
                                                    batch_of_feature_sequence_lengths=speech_lengths)
-        classification_loss, duration_loss, pitch_loss, energy_loss = net(
+        regression_loss, glow_loss, duration_loss, pitch_loss, energy_loss = net(
             text_tensors=text_tensors,
             text_lengths=text_lengths,
             gold_speech=gold_speech,
@@ -146,8 +147,10 @@ def train_loop(net,
         # then we directly update our meta-parameters without
         # the need for any task specific parameters
 
-        if not torch.isnan(classification_loss):
-            train_loss = train_loss + classification_loss
+        if not torch.isnan(regression_loss):
+            train_loss = train_loss + regression_loss
+        if not torch.isnan(glow_loss):
+            train_loss = train_loss + glow_loss
         if not torch.isnan(duration_loss):
             train_loss = train_loss + duration_loss
         if not torch.isnan(pitch_loss):
@@ -155,7 +158,8 @@ def train_loop(net,
         if not torch.isnan(energy_loss):
             train_loss = train_loss + energy_loss
 
-        classification_losses_total.append(classification_loss.item())
+        regression_losses_total.append(regression_loss.item())
+        glow_losses_total.append(glow_loss.item())
         duration_losses_total.append(duration_loss.item())
         pitch_losses_total.append(pitch_loss.item())
         energy_losses_total.append(energy_loss.item())
@@ -175,7 +179,7 @@ def train_loop(net,
             default_embedding = style_embedding_function(
                 batch_of_feature_sequences=datasets[0][0][2].unsqueeze(0).to(device),
                 batch_of_feature_sequence_lengths=datasets[0][0][3].unsqueeze(0).to(device)).squeeze()
-            print("Reconstruction Loss:    {}".format(round(sum(classification_losses_total) / len(classification_losses_total), 3)))
+            print("Reconstruction Loss:    {}".format(round(sum(regression_losses_total) / len(regression_losses_total), 3)))
             print("Steps:                  {}\n".format(step_counter))
             torch.save({
                 "model"       : net.state_dict(),
@@ -190,7 +194,8 @@ def train_loop(net,
 
             if use_wandb:
                 wandb.log({
-                    "l1_criterion" : round(sum(classification_losses_total) / len(classification_losses_total), 5),
+                    "l1_criterion" : round(sum(regression_losses_total) / len(regression_losses_total), 5),
+                    "glow_loss"    : round(sum(glow_losses_total) / len(glow_losses_total), 5),
                     "duration_loss": round(sum(duration_losses_total) / len(duration_losses_total), 5),
                     "pitch_loss"   : round(sum(pitch_losses_total) / len(pitch_losses_total), 5),
                     "energy_loss"  : round(sum(energy_losses_total) / len(energy_losses_total), 5),
@@ -211,7 +216,8 @@ def train_loop(net,
             except IndexError:
                 print("generating progress plots failed.")
 
-            classification_losses_total = list()
+            regression_losses_total = list()
+            glow_losses_total = list()
             duration_losses_total = list()
             pitch_losses_total = list()
             energy_losses_total = list()
