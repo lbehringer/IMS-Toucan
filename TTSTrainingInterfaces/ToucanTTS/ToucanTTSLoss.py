@@ -37,8 +37,9 @@ class ToucanTTSLoss(torch.nn.Module):
         """
 
         # calculate loss
+        gold_indexes_by_codebook = torch.stack(torch.split(gold_features, split_size_or_sections=8, dim=-1))
         ce = list()
-        for one_hot_pred, one_hot_target in zip(predicted_features, gold_features.transpose(0, 1).transpose(2, 3)):
+        for one_hot_pred, one_hot_target in zip(predicted_features, gold_indexes_by_codebook.transpose(2, 3)):
             # we iterate over codebooks
             ce.append(self.l1_criterion(one_hot_pred, one_hot_target))
         distance_loss = torch.stack(ce).sum(0)

@@ -150,7 +150,7 @@ class ToucanTTS(torch.nn.Module):
         self.multilingual_model = lang_embs is not None
         self.multispeaker_model = utt_embed_dim is not None
         self.num_codebooks = num_codebooks
-        self.codebook_size = codebook_dim
+        self.codebook_dim = codebook_dim
 
         articulatory_feature_embedding = Sequential(Linear(input_feature_dimensions, 100), Tanh(), Linear(100, attention_dimension))
         self.encoder = Conformer(conformer_type="encoder",
@@ -226,10 +226,9 @@ class ToucanTTS(torch.nn.Module):
                                  utt_embed=utt_embed_dim,
                                  use_conditional_layernorm_embedding_integration=use_conditional_layernorm_embedding_integration)
 
-
         self.hierarchical_classifier = torch.nn.ModuleList()
         for head in range(self.num_codebooks):
-            self.hierarchical_classifier.append(torch.nn.Linear(attention_dimension + head * self.codebook_size, self.codebook_size))
+            self.hierarchical_classifier.append(torch.nn.Linear(attention_dimension + head * self.codebook_dim, self.codebook_dim))
 
         # initialize parameters
         self._reset_parameters(init_type=init_type)
@@ -264,18 +263,18 @@ class ToucanTTS(torch.nn.Module):
             utterance_embedding (Tensor): Batch of embeddings to condition the TTS on, if the model is multispeaker
         """
         outs, \
-            predicted_durations, \
-            predicted_pitch, \
-            predicted_energy = self._forward(text_tensors=text_tensors,
-                                             text_lengths=text_lengths,
-                                             gold_speech=gold_speech,
-                                             speech_lengths=speech_lengths,
-                                             gold_durations=gold_durations,
-                                             gold_pitch=gold_pitch,
-                                             gold_energy=gold_energy,
-                                             utterance_embedding=utterance_embedding,
-                                             is_inference=False,
-                                             lang_ids=lang_ids)
+        predicted_durations, \
+        predicted_pitch, \
+        predicted_energy = self._forward(text_tensors=text_tensors,
+                                         text_lengths=text_lengths,
+                                         gold_speech=gold_speech,
+                                         speech_lengths=speech_lengths,
+                                         gold_durations=gold_durations,
+                                         gold_pitch=gold_pitch,
+                                         gold_energy=gold_energy,
+                                         utterance_embedding=utterance_embedding,
+                                         is_inference=False,
+                                         lang_ids=lang_ids)
 
         # calculate loss
         classification_loss, duration_loss, pitch_loss, energy_loss = self.criterion(predicted_features=outs,
@@ -359,19 +358,21 @@ class ToucanTTS(torch.nn.Module):
             # during training, we use teacher forcing to make it easier to predict the hierarchy of features.
             gold_indexes = list()
             gold_indexes.append(decoded_speech)
+            gold_indexes_by_codebook = torch.stack(torch.split(gold_speech, split_size_or_sections=8, dim=-1))
+            # gold_indexes_by_codebook = gold_speech.view(gold_speech.size(0), gold_speech.size(1), self.num_codebooks, self.codebook_dim).transpose(2,0).transpose(1,2)  # potentially a little faster, not sure.
         predicted_indexes = list()
         predicted_indexes.append(decoded_speech)
         for head_index, classifier_head in enumerate(self.hierarchical_classifier):
             # each codebook considers all previous codebooks.
             if not is_inference:
                 predicted_indexes.append(classifier_head(torch.cat(gold_indexes, dim=2)))
-                gold_indexes.append(gold_speech.transpose(0, 1)[head_index])
+                gold_indexes.append(gold_indexes_by_codebook[head_index])
             else:
                 predicted_indexes.append(classifier_head(torch.cat(predicted_indexes, dim=2)))
 
         indexes = torch.cat(predicted_indexes[1:], dim=2)
         # [Batch, Sequence, Hidden]
-        indexes = indexes.view(decoded_speech.size(0), decoded_speech.size(1), self.num_codebooks, self.codebook_size)
+        indexes = indexes.view(decoded_speech.size(0), decoded_speech.size(1), self.num_codebooks, self.codebook_dim)
         # [Batch, Sequence, Codebook, Classes]
         indexes = indexes.transpose(1, 2)
         # [Batch, Codebook, Sequence, Classes]
@@ -382,14 +383,14 @@ class ToucanTTS(torch.nn.Module):
 
         if is_inference:
             return indexes, \
-                predicted_durations.squeeze(), \
-                pitch_predictions.squeeze(), \
-                energy_predictions.squeeze()
+                   predicted_durations.squeeze(), \
+                   pitch_predictions.squeeze(), \
+                   energy_predictions.squeeze()
         else:
             return indexes, \
-                predicted_durations, \
-                pitch_predictions, \
-                energy_predictions
+                   predicted_durations, \
+                   pitch_predictions, \
+                   energy_predictions
 
     @torch.inference_mode()
     def inference(self,
@@ -418,14 +419,14 @@ class ToucanTTS(torch.nn.Module):
         utterance_embeddings = utterance_embedding.unsqueeze(0) if utterance_embedding is not None else None
 
         outs, \
-            duration_predictions, \
-            pitch_predictions, \
-            energy_predictions = self._forward(text_pseudobatched,
-                                               ilens,
-                                               speech_pseudobatched,
-                                               is_inference=True,
-                                               utterance_embedding=utterance_embeddings,
-                                               lang_ids=lang_id)  # (1, L, odim)
+        duration_predictions, \
+        pitch_predictions, \
+        energy_predictions = self._forward(text_pseudobatched,
+                                           ilens,
+                                           speech_pseudobatched,
+                                           is_inference=True,
+                                           utterance_embedding=utterance_embeddings,
+                                           lang_ids=lang_id)  # (1, L, odim)
         self.train()
         outs_indexed = list()
         for out in outs:
@@ -451,7 +452,7 @@ if __name__ == '__main__':
     dummy_text_batch = torch.randint(low=0, high=2, size=[3, 3, 62]).float()  # [Batch, Sequence Length, Features per Phone]
     dummy_text_lens = torch.LongTensor([2, 3, 3])
 
-    dummy_speech_batch = torch.randn([3, 9, 30, 8])  # [Batch, Sequence Length, Spectrogram Buckets]
+    dummy_speech_batch = torch.randn([3, 30, 72])  # [Batch, Sequence Length, Spectrogram Buckets]
     dummy_speech_lens = torch.LongTensor([10, 30, 20])
 
     dummy_durations = torch.LongTensor([[10, 0, 0], [10, 15, 5], [5, 5, 10]])
@@ -480,7 +481,7 @@ if __name__ == '__main__':
     dummy_text_batch = torch.randint(low=0, high=2, size=[3, 3, 62]).float()  # [Batch, Sequence Length, Features per Phone]
     dummy_text_lens = torch.LongTensor([2, 3, 3])
 
-    dummy_speech_batch = torch.randn([3, 9, 30, 8])  # [Batch, Sequence Length, Spectrogram Buckets]
+    dummy_speech_batch = torch.randn([3, 30, 72])  # [Batch, Sequence Length, Spectrogram Buckets]
     dummy_speech_lens = torch.LongTensor([10, 30, 20])
 
     dummy_durations = torch.LongTensor([[10, 0, 0], [10, 15, 5], [5, 5, 10]])
@@ -517,7 +518,7 @@ if __name__ == '__main__':
     dummy_text_batch = torch.randint(low=0, high=2, size=[2, 3, 62]).float()  # [Batch, Sequence Length, Features per Phone]
     dummy_text_lens = torch.LongTensor([2, 3])
 
-    dummy_speech_batch = torch.randn([2, 9, 30, 8])  # [Batch, Sequence Length, Spectrogram Buckets]
+    dummy_speech_batch = torch.randn([2, 30, 72])  # [Batch, Sequence Length, Spectrogram Buckets]
     dummy_speech_lens = torch.LongTensor([10, 30])
 
     dummy_durations = torch.LongTensor([[10, 0, 0], [10, 15, 5]])
