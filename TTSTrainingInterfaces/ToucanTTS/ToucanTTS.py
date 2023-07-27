@@ -405,7 +405,7 @@ class ToucanTTS(torch.nn.Module):
 
         if is_inference:
             return codec_frames, \
-                refined_codec_frames, \
+                refined_codec_frames.squeeze().transpose(0, 1), \
                 predicted_durations.squeeze(), \
                 pitch_predictions.squeeze(), \
                 energy_predictions.squeeze()
