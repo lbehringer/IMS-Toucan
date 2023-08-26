@@ -174,10 +174,11 @@ class Conformer(torch.nn.Module):
                     index1to15_l2_norm = torch.linalg.vector_norm(lang_embs)
                     # double the L2 norm compared to that of embedding 1
                     scaling_factor = 2 * (index1_l2_norm / index1to15_l2_norm)
-                lang_embs = torch.mul(lang_embs, scaling_factor)
+                    lang_embs = torch.mul(lang_embs, scaling_factor)
+                else:
+                    lang_embs = self.language_embedding(lang_ids)
             else:
                 lang_embs = self.language_embedding(lang_ids)
-            lang_embs = self.language_embedding(lang_ids)
             xs = (
                 xs + lang_embs
             )  # offset phoneme representation by language specific offset
