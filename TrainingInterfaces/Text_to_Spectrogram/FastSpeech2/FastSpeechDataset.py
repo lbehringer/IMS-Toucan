@@ -38,8 +38,11 @@ class FastSpeechDataset(Dataset):
         rebuild_cache=False,
         ctc_selection=True,
         save_imgs=False,
+        lang_emb=None,  # specify embedding for phoneme offset (can differ from `lang`)
+        dataset_id=None,
     ):
         self.cache_dir = cache_dir
+        self.dataset_id = dataset_id
         os.makedirs(cache_dir, exist_ok=True)
         if (
             not os.path.exists(os.path.join(cache_dir, "fast_train_cache.pt"))
@@ -179,16 +182,17 @@ class FastSpeechDataset(Dataset):
                 prosodic_condition = None
 
                 self.datapoints.append(
-                    [
-                        dataset[index][0],
-                        dataset[index][1],
-                        dataset[index][2],
-                        dataset[index][3],
-                        cached_duration.cpu(),
+                    [  # for index contents, see AlignerDataset.py: process_internal_dataset_chunk.append (line 186)
+                        dataset[index][0],  # text
+                        dataset[index][1],  # text length
+                        dataset[index][2],  # mel spec gold speech
+                        dataset[index][3],  # speech length
+                        cached_duration.cpu(),  # gold duration
                         cached_energy,
                         cached_pitch,
                         prosodic_condition,
-                        filepaths[index],
+                        filepaths[index],  # not used in the train loop anymore
+                        dataset_id,  # at index 9 (tensor based on saved corpus_dir, i.e. dataset name)
                     ]
                 )
                 self.ctc_losses.append(ctc_loss)
@@ -226,9 +230,11 @@ class FastSpeechDataset(Dataset):
             )
 
         self.cache_dir = cache_dir
-        self.language_id = get_language_id(lang)
+        if not lang_emb:
+            lang_emb = lang
+        self.language_id = get_language_id(lang_emb)
         print(
-            f"Prepared a FastSpeech dataset with {len(self.datapoints)} datapoints in {cache_dir}."
+            f"Prepared a FastSpeech dataset with {len(self.datapoints)} datapoints in {cache_dir} (dataset_id: {self.dataset_id})."
         )
 
     def __getitem__(self, index):
@@ -242,7 +248,8 @@ class FastSpeechDataset(Dataset):
             self.datapoints[index][6],
             self.datapoints[index][7],
             self.language_id,
-        )
+            self.dataset_id,
+        )  #  get a batch in the train loop
 
     def __len__(self):
         return len(self.datapoints)

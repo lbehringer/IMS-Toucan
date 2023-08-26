@@ -290,6 +290,7 @@ class PortaSpeech(torch.nn.Module, ABC):
         utterance_embedding,
         return_mels=False,
         lang_ids=None,
+        dataset_ids=None,
         run_glow=True,
     ):
         """
@@ -304,6 +305,8 @@ class PortaSpeech(torch.nn.Module, ABC):
             gold_durations (LongTensor): Batch of padded durations (B, Tmax + 1).
             gold_pitch (Tensor): Batch of padded token-averaged pitch (B, Tmax + 1, 1).
             gold_energy (Tensor): Batch of padded token-averaged energy (B, Tmax + 1, 1).
+            lang_ids (LongTensor): Batch of language ids.
+            dataset_ids (LongTensor): Batch of dataset_ids.
 
         Returns:
             Tensor: Loss scalar value.
@@ -324,11 +327,19 @@ class PortaSpeech(torch.nn.Module, ABC):
             utterance_embedding=utterance_embedding,
             is_inference=False,
             lang_ids=lang_ids,
+            dataset_is=dataset_ids,
             run_glow=run_glow,
         )
 
         # calculate loss
-        l1_loss, duration_loss, pitch_loss, energy_loss = self.criterion(
+        # criterion is FastSpeech2Loss (cf. FastSpeech2/FastSpeech2Loss.py)
+        (
+            l1_loss,
+            duration_loss,
+            pitch_loss,
+            energy_loss,
+            sample_wise_losses_with_dataset_ids,
+        ) = self.criterion(
             after_outs=None,
             # if a regular postnet is used, the post-postnet outs have to go here. The flow has its own loss though, so we hard-code this to None
             before_outs=before_outs,
@@ -341,6 +352,7 @@ class PortaSpeech(torch.nn.Module, ABC):
             es=gold_energy,
             ilens=text_lengths,
             olens=speech_lengths,
+            dataset_ids=dataset_ids,
         )
         kl_loss = torch.tensor(
             [0.0], device=l1_loss.device
@@ -356,8 +368,17 @@ class PortaSpeech(torch.nn.Module, ABC):
                 glow_loss,
                 kl_loss,
                 after_outs,
+                sample_wise_losses_with_dataset_ids,
             )
-        return l1_loss, duration_loss, pitch_loss, energy_loss, glow_loss, kl_loss
+        return (
+            l1_loss,
+            duration_loss,
+            pitch_loss,
+            energy_loss,
+            glow_loss,
+            kl_loss,
+            sample_wise_losses_with_dataset_ids,
+        )
 
     def _forward(
         self,
@@ -373,6 +394,7 @@ class PortaSpeech(torch.nn.Module, ABC):
         utterance_embedding=None,
         lang_ids=None,
         run_glow=True,
+        dataset_ids=None,
     ):
         if not self.multilingual_model:
             lang_ids = None
@@ -611,6 +633,7 @@ class PortaSpeech(torch.nn.Module, ABC):
         if not infer:
             y_lengths = tgt_nonpadding.sum(-1)
             tgt_mels = tgt_mels.transpose(1, 2)
+            # ldj stands for log-determinant Jacobian
             z_postflow, ldj = self.post_flow(tgt_mels, tgt_nonpadding, g=g)
             ldj = ldj / y_lengths / 80
             try:

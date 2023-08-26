@@ -63,13 +63,41 @@ class ArticulatoryCombinedTextFrontend:
             self.g2p_lang = "en-us"
             self.expand_abbreviations = english_text_expansion
             if not silent:
-                print("Created an English Text-Frontend")
+                print("Created an English Text-Frontend with {self.g2p_lang} G2P.")
+
+        elif language == "en-us":
+            self.g2p_lang = "en-us"
+            self.expand_abbreviations = english_text_expansion
+            if not silent:
+                print("Created a US English Text-Frontend with {self.g2p_lang} G2P.")
+
+        elif language == "en-gb":
+            self.g2p_lang = "en-gb"
+            self.expand_abbreviations = english_text_expansion
+            if not silent:
+                print("Created a UK English Text-Frontend with {self.g2p_lang} G2P.")
+
+        elif language == "de-de":
+            self.g2p_lang = "de"
+            self.expand_abbreviations = lambda x: x
+            if not silent:
+                print(
+                    f"Created a Standard German Text-Frontend with {self.g2p_lang} G2P."
+                )
+
+        elif language == "de-at":
+            self.g2p_lang = "de"
+            self.expand_abbreviations = lambda x: x
+            if not silent:
+                print(
+                    f"Created an Austrian German Text-Frontend with {self.g2p_lang} G2P."
+                )
 
         elif language == "de":
             self.g2p_lang = "de"
             self.expand_abbreviations = lambda x: x
             if not silent:
-                print("Created a German Text-Frontend")
+                print("Created a German Text-Frontend with {self.g2p_lang} G2P.")
 
         elif language == "el":
             self.g2p_lang = "el"
@@ -182,9 +210,9 @@ class ArticulatoryCombinedTextFrontend:
 
     @staticmethod
     def get_example_sentence(lang):
-        if lang == "en":
+        if lang == "en" or lang == "en-us" or lang == "en-gb":
             return "This is a complex sentence, it even has a pause!"
-        elif lang == "de":
+        elif lang == "de" or lang == "de-de" or lang == "de-at":
             return "Dies ist ein komplexer Satz, er hat sogar eine Pause!"
         elif lang == "el":
             return "Αυτή είναι μια σύνθετη πρόταση, έχει ακόμη και παύση!"
@@ -588,6 +616,22 @@ def get_language_id(language):
         return torch.LongTensor([16])
     elif language == "pt-br":
         return torch.LongTensor([17])
+
+    # new language embeddings (mostly accent-specific)
+    elif language == "en-gb":
+        return torch.LongTensor([101])
+    elif language == "en-us":
+        return torch.LongTensor([102])
+    elif language == "en-mix":
+        return torch.LongTensor([103])
+    elif language == "de-de":
+        return torch.LongTensor([104])
+    elif language == "de-at":
+        return torch.LongTensor([105])
+    elif language == "de-mix":
+        return torch.LongTensor([106])
+    elif language == "average":
+        return torch.LongTensor([999])
 
 
 if __name__ == "__main__":

@@ -64,7 +64,7 @@ class Conformer(torch.nn.Module):
         cnn_module_kernel=31,
         zero_triu=False,
         utt_embed=None,
-        lang_embs=None,
+        lang_embs=None,  # default PortaSpeech: 8000
     ):
         super(Conformer, self).__init__()
 
@@ -146,6 +146,26 @@ class Conformer(torch.nn.Module):
             xs = self.embed(xs)
 
         if lang_ids is not None:
+            if lang_ids.item() == 999:  # 999 assigned to `average`
+                # take average of embeddings 1 to 15
+                lang_embs = torch.zeros_like(
+                    self.language_embedding(lang_ids),
+                    device=self.language_embedding(lang_ids).device,
+                )
+                for i in range(1, 16):
+                    lang_embs += self.language_embedding(
+                        torch.LongTensor([i]).to(lang_embs.device)
+                    )
+                # normalize to L2 norm of lang_embs at index 1
+                index1_l2_norm = torch.linalg.vector_norm(
+                    self.language_embedding(torch.LongTensor([1]).to(lang_embs.device))
+                )
+                index1to15_l2_norm = torch.linalg.vector_norm(lang_embs)
+                # double the L2 norm compared to that of embedding 1
+                scaling_factor = 2 * (index1_l2_norm / index1to15_l2_norm)
+                lang_embs = torch.mul(lang_embs, scaling_factor)
+            else:
+                lang_embs = self.language_embedding(lang_ids)
             lang_embs = self.language_embedding(lang_ids)
             xs = (
                 xs + lang_embs

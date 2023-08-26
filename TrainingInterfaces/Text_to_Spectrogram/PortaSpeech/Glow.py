@@ -9,7 +9,6 @@ from TrainingInterfaces.Text_to_Spectrogram.PortaSpeech.wavenet import WN
 
 
 class ActNorm(nn.Module):
-
     def __init__(self, channels, ddi=False, **kwargs):
         super().__init__()
         self.channels = channels
@@ -20,7 +19,9 @@ class ActNorm(nn.Module):
 
     def forward(self, x, x_mask=None, reverse=False, **kwargs):
         if x_mask is None:
-            x_mask = torch.ones(x.size(0), 1, x.size(2)).to(device=x.device, dtype=x.dtype)
+            x_mask = torch.ones(x.size(0), 1, x.size(2)).to(
+                device=x.device, dtype=x.dtype
+            )
         x_len = torch.sum(x_mask, [1, 2])
         if not self.initialized:
             self.initialize(x, x_mask)
@@ -45,10 +46,12 @@ class ActNorm(nn.Module):
             denom = torch.sum(x_mask, [0, 2])
             m = torch.sum(x * x_mask, [0, 2]) / denom
             m_sq = torch.sum(x * x * x_mask, [0, 2]) / denom
-            v = m_sq - (m ** 2)
+            v = m_sq - (m**2)
             logs = 0.5 * torch.log(torch.clamp_min(v, 1e-6))
 
-            bias_init = (-m * torch.exp(-logs)).view(*self.bias.shape).to(dtype=self.bias.dtype)
+            bias_init = (
+                (-m * torch.exp(-logs)).view(*self.bias.shape).to(dtype=self.bias.dtype)
+            )
             logs_init = (-logs).view(*self.logs.shape).to(dtype=self.logs.dtype)
 
             self.bias.data.copy_(bias_init)
@@ -56,16 +59,19 @@ class ActNorm(nn.Module):
 
 
 class InvConvNear(nn.Module):
-
-    def __init__(self, channels, n_split=4, no_jacobian=False, lu=True, n_sqz=2, **kwargs):
+    def __init__(
+        self, channels, n_split=4, no_jacobian=False, lu=True, n_sqz=2, **kwargs
+    ):
         super().__init__()
-        assert (n_split % 2 == 0)
+        assert n_split % 2 == 0
         self.channels = channels
         self.n_split = n_split
         self.n_sqz = n_sqz
         self.no_jacobian = no_jacobian
 
-        w_init = torch.linalg.qr(torch.FloatTensor(self.n_split, self.n_split).normal_(), 'complete')[0]
+        w_init = torch.linalg.qr(
+            torch.FloatTensor(self.n_split, self.n_split).normal_(), "complete"
+        )[0]
         if torch.det(w_init) < 0:
             w_init[:, 0] = -1 * w_init[:, 0]
         self.lu = lu
@@ -79,19 +85,21 @@ class InvConvNear(nn.Module):
             l_mask = np.tril(np.ones(w_init.shape, dtype=float), -1)
             eye = np.eye(*w_init.shape, dtype=float)
 
-            self.register_buffer('p', torch.Tensor(np_p.astype(float)))
-            self.register_buffer('sign_s', torch.Tensor(np_sign_s.astype(float)))
+            self.register_buffer("p", torch.Tensor(np_p.astype(float)))
+            self.register_buffer("sign_s", torch.Tensor(np_sign_s.astype(float)))
             self.l = nn.Parameter(torch.Tensor(np_l.astype(float)), requires_grad=True)
-            self.log_s = nn.Parameter(torch.Tensor(np_log_s.astype(float)), requires_grad=True)
+            self.log_s = nn.Parameter(
+                torch.Tensor(np_log_s.astype(float)), requires_grad=True
+            )
             self.u = nn.Parameter(torch.Tensor(np_u.astype(float)), requires_grad=True)
-            self.register_buffer('l_mask', torch.Tensor(l_mask))
-            self.register_buffer('eye', torch.Tensor(eye))
+            self.register_buffer("l_mask", torch.Tensor(l_mask))
+            self.register_buffer("eye", torch.Tensor(eye))
         else:
             self.weight = nn.Parameter(w_init)
 
     def forward(self, x, x_mask=None, reverse=False, **kwargs):
         b, c, t = x.size()
-        assert (c % self.n_split == 0)
+        assert c % self.n_split == 0
         if x_mask is None:
             x_mask = 1
             x_len = torch.ones((b,), dtype=x.dtype, device=x.device) * t
@@ -99,7 +107,11 @@ class InvConvNear(nn.Module):
             x_len = torch.sum(x_mask, [1, 2])
 
         x = x.view(b, self.n_sqz, c // self.n_split, self.n_split // self.n_sqz, t)
-        x = x.permute(0, 1, 3, 2, 4).contiguous().view(b, self.n_split, c // self.n_split, t)
+        x = (
+            x.permute(0, 1, 3, 2, 4)
+            .contiguous()
+            .view(b, self.n_split, c // self.n_split, t)
+        )
 
         if self.lu:
             self.weight, log_s = self._get_weight()
@@ -129,17 +141,20 @@ class InvConvNear(nn.Module):
     def _get_weight(self):
         l, log_s, u = self.l, self.log_s, self.u
         l = l * self.l_mask + self.eye
-        u = u * self.l_mask.transpose(0, 1).contiguous() + torch.diag(self.sign_s * torch.exp(log_s))
+        u = u * self.l_mask.transpose(0, 1).contiguous() + torch.diag(
+            self.sign_s * torch.exp(log_s)
+        )
         weight = torch.matmul(self.p, torch.matmul(l, u))
         return weight, log_s
 
     def store_inverse(self):
         weight, _ = self._get_weight()
-        self.weight_inv = torch.inverse(weight.float()).to(next(self.parameters()).device)
+        self.weight_inv = torch.inverse(weight.float()).to(
+            next(self.parameters()).device
+        )
 
 
 class InvConv(nn.Module):
-
     def __init__(self, channels, no_jacobian=False, lu=True, **kwargs):
         super().__init__()
         w_shape = [channels, channels]
@@ -157,8 +172,8 @@ class InvConv(nn.Module):
             l_mask = np.tril(np.ones(w_shape, dtype=float), -1)
             eye = np.eye(*w_shape, dtype=float)
 
-            self.register_buffer('p', torch.Tensor(np_p.astype(float)))
-            self.register_buffer('sign_s', torch.Tensor(np_sign_s.astype(float)))
+            self.register_buffer("p", torch.Tensor(np_p.astype(float)))
+            self.register_buffer("sign_s", torch.Tensor(np_sign_s.astype(float)))
             self.l = nn.Parameter(torch.Tensor(np_l.astype(float)))
             self.log_s = nn.Parameter(torch.Tensor(np_log_s.astype(float)))
             self.u = nn.Parameter(torch.Tensor(np_u.astype(float)))
@@ -175,7 +190,9 @@ class InvConv(nn.Module):
         self.l_mask = self.l_mask.to(device)
         self.eye = self.eye.to(device)
         l = self.l * self.l_mask + self.eye
-        u = self.u * self.l_mask.transpose(0, 1).contiguous() + torch.diag(self.sign_s * torch.exp(self.log_s))
+        u = self.u * self.l_mask.transpose(0, 1).contiguous() + torch.diag(
+            self.sign_s * torch.exp(self.log_s)
+        )
         dlogdet = self.log_s.sum()
         if not reverse:
             w = torch.matmul(self.p, torch.matmul(l, u))
@@ -212,13 +229,22 @@ class InvConv(nn.Module):
             return z, logdet
 
     def store_inverse(self):
-        self.weight, self.dlogdet = self.get_weight('cuda', reverse=True)
+        self.weight, self.dlogdet = self.get_weight("cuda", reverse=True)
 
 
 class CouplingBlock(nn.Module):
-
-    def __init__(self, in_channels, hidden_channels, kernel_size, dilation_rate, n_layers,
-                 gin_channels=0, p_dropout=0, sigmoid_scale=False, wn=None):
+    def __init__(
+        self,
+        in_channels,
+        hidden_channels,
+        kernel_size,
+        dilation_rate,
+        n_layers,
+        gin_channels=0,
+        p_dropout=0,
+        sigmoid_scale=False,
+        wn=None,
+    ):
         super().__init__()
         self.in_channels = in_channels
         self.hidden_channels = hidden_channels
@@ -238,7 +264,14 @@ class CouplingBlock(nn.Module):
         end.weight.data.zero_()
         end.bias.data.zero_()
         self.end = end
-        self.wn = WN(hidden_channels, kernel_size, dilation_rate, n_layers, gin_channels, p_dropout)
+        self.wn = WN(
+            hidden_channels,
+            kernel_size,
+            dilation_rate,
+            n_layers,
+            gin_channels,
+            p_dropout,
+        )
         if wn is not None:
             self.wn.in_layers = wn.in_layers
             self.wn.res_skip_layers = wn.res_skip_layers
@@ -246,15 +279,15 @@ class CouplingBlock(nn.Module):
     def forward(self, x, x_mask=None, reverse=False, g=None, **kwargs):
         if x_mask is None:
             x_mask = 1
-        x_0, x_1 = x[:, :self.in_channels // 2], x[:, self.in_channels // 2:]
+        x_0, x_1 = x[:, : self.in_channels // 2], x[:, self.in_channels // 2 :]
 
         x = self.start(x_0) * x_mask
         x = self.wn(x, x_mask, g)
         out = self.end(x)
 
         z_0 = x_0
-        m = out[:, :self.in_channels // 2, :]
-        logs = out[:, self.in_channels // 2:, :]
+        m = out[:, : self.in_channels // 2, :]
+        logs = out[:, self.in_channels // 2 :, :]
         if self.sigmoid_scale:
             logs = torch.log(1e-6 + torch.sigmoid(logs + 2))
         if reverse:
@@ -271,23 +304,23 @@ class CouplingBlock(nn.Module):
 
 
 class Glow(nn.Module):
-
-    def __init__(self,
-                 in_channels,
-                 hidden_channels,
-                 kernel_size,
-                 dilation_rate,
-                 n_blocks,
-                 n_layers,
-                 p_dropout=0.,
-                 n_split=4,
-                 n_sqz=2,
-                 sigmoid_scale=False,
-                 gin_channels=0,
-                 inv_conv_type='near',
-                 share_cond_layers=False,
-                 share_wn_layers=0,
-                 ):
+    def __init__(
+        self,
+        in_channels,
+        hidden_channels,
+        kernel_size,
+        dilation_rate,
+        n_blocks,
+        n_layers,
+        p_dropout=0.0,
+        n_split=4,
+        n_sqz=2,
+        sigmoid_scale=False,
+        gin_channels=0,
+        inv_conv_type="near",
+        share_cond_layers=False,
+        share_wn_layers=0,
+    ):
         super().__init__()
 
         self.in_channels = in_channels
@@ -303,20 +336,33 @@ class Glow(nn.Module):
         self.gin_channels = gin_channels
         self.share_cond_layers = share_cond_layers
         if gin_channels != 0 and share_cond_layers:
-            cond_layer = torch.nn.Conv1d(gin_channels * n_sqz, 2 * hidden_channels * n_layers, 1)
-            self.cond_layer = torch.nn.utils.weight_norm(cond_layer, name='weight')
+            cond_layer = torch.nn.Conv1d(
+                gin_channels * n_sqz, 2 * hidden_channels * n_layers, 1
+            )
+            self.cond_layer = torch.nn.utils.weight_norm(cond_layer, name="weight")
         wn = None
         self.flows = nn.ModuleList()
         for b in range(n_blocks):
             self.flows.append(ActNorm(channels=in_channels * n_sqz))
-            if inv_conv_type == 'near':
-                self.flows.append(InvConvNear(channels=in_channels * n_sqz, n_split=n_split, n_sqz=n_sqz))
-            if inv_conv_type == 'invconv':
+            if inv_conv_type == "near":
+                self.flows.append(
+                    InvConvNear(
+                        channels=in_channels * n_sqz, n_split=n_split, n_sqz=n_sqz
+                    )
+                )
+            if inv_conv_type == "invconv":
                 self.flows.append(InvConv(channels=in_channels * n_sqz))
             if share_wn_layers > 0:
                 if b % share_wn_layers == 0:
-                    wn = WN(hidden_channels, kernel_size, dilation_rate, n_layers, gin_channels * n_sqz,
-                            p_dropout, share_cond_layers)
+                    wn = WN(
+                        hidden_channels,
+                        kernel_size,
+                        dilation_rate,
+                        n_layers,
+                        gin_channels * n_sqz,
+                        p_dropout,
+                        share_cond_layers,
+                    )
             self.flows.append(
                 CouplingBlock(
                     in_channels * n_sqz,
@@ -327,8 +373,9 @@ class Glow(nn.Module):
                     gin_channels=gin_channels * n_sqz,
                     p_dropout=p_dropout,
                     sigmoid_scale=sigmoid_scale,
-                    wn=wn
-                    ))
+                    wn=wn,
+                )
+            )
 
     def forward(self, x, x_mask=None, g=None, reverse=False, return_hiddens=False):
         logdet_tot = 0
@@ -346,7 +393,9 @@ class Glow(nn.Module):
         if self.share_cond_layers and g is not None:
             g = self.cond_layer(g)
         for f in flows:
-            x, logdet = f(x, x_mask, g=g, reverse=reverse)
+            x, logdet = f(
+                x, x_mask, g=g, reverse=reverse
+            )  # lodget = log-determinant Jacobian
             if return_hiddens:
                 hs.append(x)
             logdet_tot += logdet

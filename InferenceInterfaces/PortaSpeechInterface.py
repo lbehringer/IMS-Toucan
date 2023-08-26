@@ -67,7 +67,7 @@ class PortaSpeechInterface(torch.nn.Module):
         #   build text to phone        #
         ################################
         self.text2phone = ArticulatoryCombinedTextFrontend(
-            language=language, add_silence_to_end=True
+            language=language, add_silence_to_end=True, silent=False
         )
 
         ################################
@@ -322,6 +322,7 @@ class PortaSpeechInterface(torch.nn.Module):
         dur_list=None,
         pitch_list=None,
         energy_list=None,
+        input_is_phones=False,
     ):
         """
         Args:
@@ -386,11 +387,13 @@ class PortaSpeechInterface(torch.nn.Module):
                                 duration_scaling_factor=duration_scaling_factor,
                                 pitch_variance_scale=pitch_variance_scale,
                                 energy_variance_scale=energy_variance_scale,
+                                input_is_phones=input_is_phones,
                             ).cpu(),
                         ),
                         0,
                     )
                     wav = torch.cat((wav, silence), 0)
+        os.makedirs(os.path.dirname(file_location), exist_ok=True)
         soundfile.write(file=file_location, data=wav.cpu().numpy(), samplerate=24000)
 
     def read_aloud(

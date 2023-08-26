@@ -12,6 +12,7 @@ from TrainingInterfaces.Text_to_Spectrogram.FastSpeech2.FastSpeechDataset import
 )
 from Utility.path_to_transcript_dicts import *
 from Utility.storage_config import MODELS_DIR
+from Utility.map_dataset_id import map_dataset_to_dataset_id
 
 
 def prepare_aligner_corpus(transcript_dict, corpus_dir, lang, device):
@@ -35,6 +36,7 @@ def prepare_fastspeech_corpus(
     use_reconstruction=True,
     phone_input=False,
     save_imgs=False,
+    lang_emb=None,
 ):
     """
     create an aligner dataset,
@@ -44,6 +46,9 @@ def prepare_fastspeech_corpus(
 
     Skips parts that have been done before.
     """
+
+    dataset_id = map_dataset_to_dataset_id(corpus_dir)
+
     if not os.path.exists(os.path.join(corpus_dir, "fast_train_cache.pt")):
         if fine_tune_aligner:
             aligner_dir = os.path.join(corpus_dir, "Aligner")
@@ -95,6 +100,8 @@ def prepare_fastspeech_corpus(
         cache_dir=corpus_dir,
         device=torch.device("cuda"),
         lang=lang,
+        lang_emb=lang_emb,
         ctc_selection=ctc_selection,
         save_imgs=save_imgs,
+        dataset_id=dataset_id,
     )

@@ -14,10 +14,11 @@ from Utility.utils import delete_old_checkpoints
 from Utility.utils import get_most_recent_checkpoint
 from Utility.utils import kl_beta
 from Utility.utils import plot_progress_spec
+from Utility.map_dataset_id import map_dataset_to_dataset_id
 
 
 def collate_and_pad(batch):
-    # text, text_len, speech, speech_len, durations, energy, pitch, utterance condition, language_id
+    # text, text_len, speech, speech_len, durations, energy, pitch, utterance condition, language_id, dataset_id
     return (
         pad_sequence([datapoint[0].squeeze() for datapoint in batch], batch_first=True),
         torch.stack([datapoint[1] for datapoint in batch]),
@@ -28,7 +29,34 @@ def collate_and_pad(batch):
         pad_sequence([datapoint[6].squeeze() for datapoint in batch], batch_first=True),
         None,
         torch.stack([datapoint[8] for datapoint in batch]),
+        torch.stack([datapoint[9] for datapoint in batch]),
     )
+
+
+def get_dict_for_dataset_specific_losses(concat_datasets):
+    """Identifies all dataset names in train set, then categorizes loss values for each individual dataset.
+    Since they share the same lang_id, it is required to identify them via dataset.cache_dir (specified in finetune script as `corpus_dir`)
+    Args:
+        dataset_
+    Returns
+    """
+    # get dataset_id from each dataset to identify all used dataset_ids
+    total_dataset_ids = dict()
+    for concat_dataset in concat_datasets:
+        for dataset in concat_dataset.datasets:
+            # convert dataset_id long_tensors into ints, so they can be used as dict keys
+            dataset_id_int = int(dataset.dataset_id)
+            # in each step, append one element to each key in this dict
+            total_dataset_ids[dataset_id_int] = dict()
+            total_dataset_ids[dataset_id_int]["l1_losses"] = list()
+            total_dataset_ids[dataset_id_int]["duration_losses"] = list()
+            total_dataset_ids[dataset_id_int]["energy_losses"] = list()
+            total_dataset_ids[dataset_id_int]["pitch_losses"] = list()
+            total_dataset_ids[dataset_id_int]["l1_losses_total"] = list()
+            total_dataset_ids[dataset_id_int]["duration_losses_total"] = list()
+            total_dataset_ids[dataset_id_int]["energy_losses_total"] = list()
+            total_dataset_ids[dataset_id_int]["pitch_losses_total"] = list()
+    return total_dataset_ids
 
 
 def train_loop(
@@ -42,7 +70,7 @@ def train_loop(
     steps_per_checkpoint,
     lr,
     path_to_checkpoint,
-    lang,
+    lang,  # eval_lang for plotting
     path_to_embed_model,
     resume,
     fine_tune,
@@ -96,6 +124,7 @@ def train_loop(
     energy_losses_total = list()
     glow_losses_total = list()
     cycle_losses_total = list()
+    dataset_specific_loss_dict = get_dict_for_dataset_specific_losses(datasets)
 
     if resume:
         path_to_checkpoint = get_most_recent_checkpoint(checkpoint_dir=save_directory)
@@ -123,7 +152,7 @@ def train_loop(
                 if len(batches) < batch_size:
                     # we get one batch for each task (i.e. language in this case) in a randomized order
                     try:
-                        batch = next(train_iters[index])
+                        batch = next(train_iters[index])  # batch is a list
                         batches.append(batch)
                     except StopIteration:
                         train_iters[index] = iter(train_loaders[index])
@@ -138,7 +167,9 @@ def train_loop(
         gold_durations = batch[4].to(device)
         gold_pitch = batch[6].unsqueeze(-1).to(device)  # mind the switched order
         gold_energy = batch[5].unsqueeze(-1).to(device)  # mind the switched order
+        # print(f"Squeezing dim1. Resulting tensor for lang_ids = {batch[8].squeeze(1)}")
         lang_ids = batch[8].squeeze(1).to(device)
+        dataset_ids = batch[9].squeeze(1).to(device)
 
         train_loss = 0.0
         with autocast():
@@ -148,6 +179,7 @@ def train_loop(
                 # second order regular MAML, but we do it only over one
                 # step (i.e. iterations of inner loop = 1)
 
+                # style_embedding contains a batch of embeddings, i.e. one for each sample
                 style_embedding = style_embedding_function(
                     batch_of_spectrograms=batch[2].to(device),
                     batch_of_spectrogram_lengths=batch[3].to(device),
@@ -159,7 +191,8 @@ def train_loop(
                     pitch_loss,
                     energy_loss,
                     glow_loss,
-                    kl_loss,
+                    kl_loss,  # kl_loss is [0.0], only implemented for compatibility reasons
+                    dataset_ids_individual_losses,
                 ) = net(
                     text_tensors=text_tensors,
                     text_lengths=text_lengths,
@@ -170,6 +203,7 @@ def train_loop(
                     gold_energy=gold_energy,
                     utterance_embedding=style_embedding,
                     lang_ids=lang_ids,
+                    dataset_ids=dataset_ids,
                     return_mels=False,
                     run_glow=step_counter > postnet_start_steps or fine_tune,
                 )
@@ -202,6 +236,7 @@ def train_loop(
                     glow_loss,
                     kl_loss,
                     output_spectrograms,
+                    dataset_ids_individual_losses,
                 ) = net(
                     text_tensors=text_tensors,
                     text_lengths=text_lengths,
@@ -212,6 +247,7 @@ def train_loop(
                     gold_energy=gold_energy,
                     utterance_embedding=style_embedding,
                     lang_ids=lang_ids,
+                    dataset_ids=dataset_ids,
                     return_mels=True,
                     run_glow=step_counter > postnet_start_steps or fine_tune,
                 )
@@ -224,6 +260,9 @@ def train_loop(
                     train_loss = train_loss + pitch_loss
                 if not torch.isnan(energy_loss):
                     train_loss = train_loss + energy_loss
+
+                # TODO: modify cycle_loss to be computed for each sample instead of whole batch
+                # for this, change style_embedding_function args to be single output_spectrograms and speech_lengths, and call it len(batch) times
 
                 style_embedding_function.train()
                 (
@@ -266,6 +305,49 @@ def train_loop(
             if step_counter > postnet_start_steps and not torch.isnan(glow_loss):
                 train_loss = train_loss + glow_loss
                 glow_losses_total.append(glow_loss.item())
+
+        ######### DATASET-SPECIFIC LOSSES
+        # append losses for each dataset
+        dataset_ids = dataset_ids_individual_losses[0]
+        l1_losses = dataset_ids_individual_losses[1]
+        duration_losses = dataset_ids_individual_losses[2]
+        pitch_losses = dataset_ids_individual_losses[3]
+        energy_losses = dataset_ids_individual_losses[4]
+
+        for k in dataset_specific_loss_dict.keys():
+            dataset_specific_loss_dict[k]["l1_losses"] = list()
+            dataset_specific_loss_dict[k]["duration_losses"] = list()
+            dataset_specific_loss_dict[k]["pitch_losses"] = list()
+            dataset_specific_loss_dict[k]["energy_losses"] = list()
+
+        for idx, tensor in enumerate(dataset_ids):
+            dataset_specific_loss_dict[int(tensor)]["l1_losses"].append(
+                l1_losses[idx].item()
+            )
+            dataset_specific_loss_dict[int(tensor)]["duration_losses"].append(
+                duration_losses[idx].item()
+            )
+            dataset_specific_loss_dict[int(tensor)]["pitch_losses"].append(
+                pitch_losses[idx].item()
+            )
+            dataset_specific_loss_dict[int(tensor)]["energy_losses"].append(
+                energy_losses[idx].item()
+            )
+        for k in dataset_specific_loss_dict.keys():
+            if len(dataset_specific_loss_dict[k]["l1_losses"]) > 0:
+                factor = batch_size / len(dataset_specific_loss_dict[k]["l1_losses"])
+                dataset_specific_loss_dict[k]["l1_losses_total"].append(
+                    sum(dataset_specific_loss_dict[k]["l1_losses"]) * factor
+                )
+                dataset_specific_loss_dict[k]["duration_losses_total"].append(
+                    sum(dataset_specific_loss_dict[k]["duration_losses"]) * factor
+                )
+                dataset_specific_loss_dict[k]["pitch_losses_total"].append(
+                    sum(dataset_specific_loss_dict[k]["pitch_losses"]) * factor
+                )
+                dataset_specific_loss_dict[k]["energy_losses_total"].append(
+                    sum(dataset_specific_loss_dict[k]["energy_losses"]) * factor
+                )
 
         optimizer.zero_grad()
         grad_scaler.scale(train_loss).backward()
@@ -340,6 +422,72 @@ def train_loop(
                 print("generating progress plots failed.")
 
             if use_wandb:
+                for k in dataset_specific_loss_dict.keys():
+                    if len(dataset_specific_loss_dict[k]["l1_losses_total"]) > 0:
+                        wandb.log(
+                            {
+                                f"l1_loss_dataset_{k}": round(
+                                    (
+                                        sum(
+                                            dataset_specific_loss_dict[k][
+                                                "l1_losses_total"
+                                            ]
+                                        )
+                                        / len(
+                                            dataset_specific_loss_dict[k][
+                                                "l1_losses_total"
+                                            ]
+                                        )
+                                    ),
+                                    3,
+                                ),
+                                f"duration_loss_dataset_{k}": round(
+                                    (
+                                        sum(
+                                            dataset_specific_loss_dict[k][
+                                                "duration_losses_total"
+                                            ]
+                                        )
+                                        / len(
+                                            dataset_specific_loss_dict[k][
+                                                "duration_losses_total"
+                                            ]
+                                        )
+                                    ),
+                                    3,
+                                ),
+                                f"pitch_loss_dataset_{k}": round(
+                                    (
+                                        sum(
+                                            dataset_specific_loss_dict[k][
+                                                "pitch_losses_total"
+                                            ]
+                                        )
+                                        / len(
+                                            dataset_specific_loss_dict[k][
+                                                "pitch_losses_total"
+                                            ]
+                                        )
+                                    ),
+                                    3,
+                                ),
+                                f"energy_loss_dataset_{k}": round(
+                                    (
+                                        sum(
+                                            dataset_specific_loss_dict[k][
+                                                "energy_losses_total"
+                                            ]
+                                        )
+                                        / len(
+                                            dataset_specific_loss_dict[k][
+                                                "energy_losses_total"
+                                            ]
+                                        )
+                                    ),
+                                    3,
+                                ),
+                            }
+                        )
                 wandb.log(
                     {
                         "total_loss": round(
@@ -375,4 +523,5 @@ def train_loop(
             pitch_losses_total = list()
             energy_losses_total = list()
             glow_losses_total = list()
+            dataset_specific_loss_dict = get_dict_for_dataset_specific_losses(datasets)
             net.train()
