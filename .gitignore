@@ -13,6 +13,8 @@ singing/
 toucan_conda_venv/
 venv/
 
+Utility/storage_config.py
+
 *_graph
 app.py
 gradio*
