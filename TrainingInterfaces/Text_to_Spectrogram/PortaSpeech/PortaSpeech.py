@@ -314,7 +314,6 @@ class PortaSpeech(torch.nn.Module, ABC):
             Tensor: Weight value.
         """
         # Texts include EOS token from the teacher model already in this version
-
         # forward propagation
         before_outs, after_outs, d_outs, p_outs, e_outs, glow_loss = self._forward(
             text_tensors,
@@ -327,7 +326,6 @@ class PortaSpeech(torch.nn.Module, ABC):
             utterance_embedding=utterance_embedding,
             is_inference=False,
             lang_ids=lang_ids,
-            dataset_is=dataset_ids,
             run_glow=run_glow,
         )
 
@@ -394,7 +392,6 @@ class PortaSpeech(torch.nn.Module, ABC):
         utterance_embedding=None,
         lang_ids=None,
         run_glow=True,
-        dataset_ids=None,
     ):
         if not self.multilingual_model:
             lang_ids = None
@@ -410,6 +407,7 @@ class PortaSpeech(torch.nn.Module, ABC):
             text_masks,
             utterance_embedding=utterance_embedding,
             lang_ids=lang_ids,
+            check_for_lang_ids=True,
         )  # (B, Tmax, adim)
 
         if utterance_embedding is not None:
