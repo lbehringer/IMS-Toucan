@@ -15,14 +15,15 @@ from Preprocessing.articulatory_features import get_phone_to_id
 
 
 class ArticulatoryCombinedTextFrontend:
-
-    def __init__(self,
-                 language,
-                 use_explicit_eos=True,
-                 use_lexical_stress=True,
-                 silent=True,
-                 add_silence_to_end=True,
-                 use_word_boundaries=True):
+    def __init__(
+        self,
+        language,
+        use_explicit_eos=True,
+        use_lexical_stress=True,
+        silent=True,
+        add_silence_to_end=True,
+        use_word_boundaries=True,
+    ):
         """
         Mostly preparing ID lookups
         """
@@ -32,13 +33,7 @@ class ArticulatoryCombinedTextFrontend:
         self.add_silence_to_end = add_silence_to_end
         self.use_word_boundaries = use_word_boundaries
 
-        register_to_height = {
-            "˥": 5,
-            "˦": 4,
-            "˧": 3,
-            "˨": 2,
-            "˩": 1
-        }
+        register_to_height = {"˥": 5, "˦": 4, "˧": 3, "˨": 2, "˩": 1}
         self.rising_perms = list()
         self.falling_perms = list()
         self.peaking_perms = list()
@@ -51,9 +46,17 @@ class ArticulatoryCombinedTextFrontend:
                 else:
                     self.rising_perms.append(first_tone + second_tone)
                 for third_tone in ["˥", "˦", "˧", "˨", "˩"]:
-                    if register_to_height[first_tone] > register_to_height[second_tone] < register_to_height[third_tone]:
+                    if (
+                        register_to_height[first_tone]
+                        > register_to_height[second_tone]
+                        < register_to_height[third_tone]
+                    ):
                         self.dipping_perms.append(first_tone + second_tone + third_tone)
-                    elif register_to_height[first_tone] < register_to_height[second_tone] > register_to_height[third_tone]:
+                    elif (
+                        register_to_height[first_tone]
+                        < register_to_height[second_tone]
+                        > register_to_height[third_tone]
+                    ):
                         self.peaking_perms.append(first_tone + second_tone + third_tone)
 
         if language == "en":
@@ -165,11 +168,13 @@ class ArticulatoryCombinedTextFrontend:
         # remember to also update get_language_id() below when adding something here, as well as the get_example_sentence function
 
         if self.g2p_lang != "cmn" and self.g2p_lang != "cmn-latn-pinyin":
-            self.phonemizer_backend = EspeakBackend(language=self.g2p_lang,
-                                                    punctuation_marks=';:,.!?¡¿—…"«»“”~/。【】、‥،؟“”؛',
-                                                    preserve_punctuation=True,
-                                                    language_switch='remove-flags',
-                                                    with_stress=self.use_stress)
+            self.phonemizer_backend = EspeakBackend(
+                language=self.g2p_lang,
+                punctuation_marks=';:,.!?¡¿—…"«»“”~/。【】、‥،؟“”؛',
+                preserve_punctuation=True,
+                language_switch="remove-flags",
+                with_stress=self.use_stress,
+            )
 
         self.phone_to_vector = generate_feature_table()
         self.phone_to_id = get_phone_to_id()
@@ -206,11 +211,15 @@ class ArticulatoryCombinedTextFrontend:
         elif lang == "vi":
             return "Đây là một câu phức tạp, nó thậm chí còn chứa một khoảng dừng."
         else:
-            print(f"No example sentence specified for the language: {lang}\n "
-                  f"Please specify an example sentence in the get_example_sentence function in Preprocessing/TextFrontend to track your progress.")
+            print(
+                f"No example sentence specified for the language: {lang}\n "
+                f"Please specify an example sentence in the get_example_sentence function in Preprocessing/TextFrontend to track your progress."
+            )
             return None
 
-    def string_to_tensor(self, text, view=False, device="cpu", handle_missing=True, input_phonemes=False):
+    def string_to_tensor(
+        self, text, view=False, device="cpu", handle_missing=True, input_phonemes=False
+    ):
         """
         Fixes unicode errors, expands some abbreviations,
         turns graphemes into phonemes and then vectorizes
@@ -219,7 +228,9 @@ class ArticulatoryCombinedTextFrontend:
         if input_phonemes:
             phones = text
         else:
-            phones = self.get_phone_string(text=text, include_eos_symbol=True, for_feature_extraction=True)
+            phones = self.get_phone_string(
+                text=text, include_eos_symbol=True, for_feature_extraction=True
+            )
         phones = phones.replace("ɚ", "ə").replace("ᵻ", "ɨ")
         if view:
             print("Phonemes: \n{}\n".format(phones))
@@ -229,20 +240,20 @@ class ArticulatoryCombinedTextFrontend:
 
         for char in phones:
             # affects following phoneme -----------------
-            if char == '\u02C8':
+            if char == "\u02C8":
                 # primary stress
                 stressed_flag = True
             # affects previous phoneme -----------------
-            elif char == '\u02D0':
+            elif char == "\u02D0":
                 # lengthened
                 phones_vector[-1][get_feature_to_index_lookup()["lengthened"]] = 1
-            elif char == '\u02D1':
+            elif char == "\u02D1":
                 # half length
                 phones_vector[-1][get_feature_to_index_lookup()["half-length"]] = 1
-            elif char == '\u0306':
+            elif char == "\u0306":
                 # shortened
                 phones_vector[-1][get_feature_to_index_lookup()["shortened"]] = 1
-            elif char == '̃':
+            elif char == "̃":
                 # nasalized (vowel)
                 phones_vector[-1][get_feature_to_index_lookup()["nasal"]] = 1
             elif char == "˥":
@@ -279,7 +290,9 @@ class ArticulatoryCombinedTextFrontend:
                     except KeyError:
                         print("unknown phoneme: {}".format(char))
                 else:
-                    phones_vector.append(self.phone_to_vector[char].copy())  # leave error handling to elsewhere
+                    phones_vector.append(
+                        self.phone_to_vector[char].copy()
+                    )  # leave error handling to elsewhere
 
                 if stressed_flag:
                     stressed_flag = False
@@ -287,7 +300,13 @@ class ArticulatoryCombinedTextFrontend:
 
         return torch.Tensor(phones_vector, device=device)
 
-    def get_phone_string(self, text, include_eos_symbol=True, for_feature_extraction=False, for_plot_labels=False):
+    def get_phone_string(
+        self,
+        text,
+        include_eos_symbol=True,
+        for_feature_extraction=False,
+        for_plot_labels=False,
+    ):
         # expand abbreviations
         utt = self.expand_abbreviations(text)
 
@@ -295,25 +314,41 @@ class ArticulatoryCombinedTextFrontend:
         if self.g2p_lang == "cmn-latn-pinyin" or self.g2p_lang == "cmn":
             phones = pinyin_to_ipa(utt)
         else:
-            phones = self.phonemizer_backend.phonemize([utt], strip=True)[0]  # To use a different phonemizer, this is the only line that needs to be exchanged
+            phones = self.phonemizer_backend.phonemize([utt], strip=True)[
+                0
+            ]  # To use a different phonemizer, this is the only line that needs to be exchanged
 
         # Unfortunately tonal languages don't agree on the tone, most tonal
         # languages use different tones denoted by different numbering
         # systems. At this point in the script, it is attempted to unify
         # them all to the tones in the IPA standard.
         if self.g2p_lang == "vi":
-            phones = phones.replace('1', "˧")
-            phones = phones.replace('2', "˨˩")
-            phones = phones.replace('ɜ', "˧˥")  # I'm fairly certain that this is a bug in espeak and ɜ is meant to be 3
-            phones = phones.replace('3', "˧˥")  # I'm fairly certain that this is a bug in espeak and ɜ is meant to be 3
-            phones = phones.replace('4', "˦˧˥")
-            phones = phones.replace('5', "˧˩˧")
-            phones = phones.replace('6', "˧˩ʔ˨")  # very weird tone, because the tone introduces another phoneme
-            phones = phones.replace('7', "˧")
+            phones = phones.replace("1", "˧")
+            phones = phones.replace("2", "˨˩")
+            phones = phones.replace(
+                "ɜ", "˧˥"
+            )  # I'm fairly certain that this is a bug in espeak and ɜ is meant to be 3
+            phones = phones.replace(
+                "3", "˧˥"
+            )  # I'm fairly certain that this is a bug in espeak and ɜ is meant to be 3
+            phones = phones.replace("4", "˦˧˥")
+            phones = phones.replace("5", "˧˩˧")
+            phones = phones.replace(
+                "6", "˧˩ʔ˨"
+            )  # very weird tone, because the tone introduces another phoneme
+            phones = phones.replace("7", "˧")
 
-        return self.postprocess_phoneme_string(phones, for_feature_extraction, include_eos_symbol, for_plot_labels)
+        return self.postprocess_phoneme_string(
+            phones, for_feature_extraction, include_eos_symbol, for_plot_labels
+        )
 
-    def postprocess_phoneme_string(self, phoneme_string, for_feature_extraction, include_eos_symbol, for_plot_labels):
+    def postprocess_phoneme_string(
+        self,
+        phoneme_string,
+        for_feature_extraction,
+        include_eos_symbol,
+        for_plot_labels,
+    ):
         """
         Takes as input a phoneme string and processes it to work best with the way we represent phonemes as featurevectors
         """
@@ -349,20 +384,20 @@ class ArticulatoryCombinedTextFrontend:
             # unifying some phoneme representations
             ("ɫ", "l"),  # alveolopalatal
             ("ɚ", "ə"),
-            ('ᵻ', 'ɨ'),
+            ("ᵻ", "ɨ"),
             ("ɧ", "ç"),  # velopalatal
             ("ɥ", "j"),  # labiopalatal
             ("ɬ", "s"),  # lateral
             ("ɮ", "z"),  # lateral
-            ('ɺ', 'ɾ'),  # lateral
-            ('\u02CC', ""),  # secondary stress
-            ('\u030B', "˥"),
-            ('\u0301', "˦"),
-            ('\u0304', "˧"),
-            ('\u0300', "˨"),
-            ('\u030F', "˩"),
-            ('\u0302', "⭨"),
-            ('\u030C', "⭧"),
+            ("ɺ", "ɾ"),  # lateral
+            ("\u02CC", ""),  # secondary stress
+            ("\u030B", "˥"),
+            ("\u0301", "˦"),
+            ("\u0304", "˧"),
+            ("\u0300", "˨"),
+            ("\u030F", "˩"),
+            ("\u0302", "⭨"),
+            ("\u030C", "⭧"),
             ("꜖", "˩"),
             ("꜕", "˨"),
             ("꜔", "˧"),
@@ -375,34 +410,68 @@ class ArticulatoryCombinedTextFrontend:
             ("…", "."),
             (":", "~"),
             (";", "~"),
-            (",", "~")  # make sure this remains the final one when adding new ones
+            (",", "~"),  # make sure this remains the final one when adding new ones
         ]
-        unsupported_ipa_characters = {'̹', '̙', '̞', '̯', '̤', '̪', '̩', '̠', '̟', 'ꜜ',
-                                      '̬', '̽', 'ʰ', '|', '̝', '•', 'ˠ', '↘',
-                                      '‖', '̰', '‿', 'ᷝ', '̈', 'ᷠ', '̜', 'ʷ', 'ʲ',
-                                      '̚', '↗', 'ꜛ', '̻', '̥', 'ˁ', '̘', '͡', '̺'}
+        unsupported_ipa_characters = {
+            "̹",
+            "̙",
+            "̞",
+            "̯",
+            "̤",
+            "̪",
+            "̩",
+            "̠",
+            "̟",
+            "ꜜ",
+            "̬",
+            "̽",
+            "ʰ",
+            "|",
+            "̝",
+            "•",
+            "ˠ",
+            "↘",
+            "‖",
+            "̰",
+            "‿",
+            "ᷝ",
+            "̈",
+            "ᷠ",
+            "̜",
+            "ʷ",
+            "ʲ",
+            "̚",
+            "↗",
+            "ꜛ",
+            "̻",
+            "̥",
+            "ˁ",
+            "̘",
+            "͡",
+            "̺",
+        }
         for char in unsupported_ipa_characters:
             replacements.append((char, ""))
 
         if not for_feature_extraction:
             # in case we want to plot etc., we only need the segmental units, so we remove everything else.
             replacements = replacements + [
-                ('\u02C8', ""),  # primary stress
-                ('\u02D0', ""),  # lengthened
-                ('\u02D1', ""),  # half-length
-                ('\u0306', ""),  # shortened
+                ("\u02C8", ""),  # primary stress
+                ("\u02D0", ""),  # lengthened
+                ("\u02D1", ""),  # half-length
+                ("\u0306", ""),  # shortened
                 ("˥", ""),  # very high tone
                 ("˦", ""),  # high tone
                 ("˧", ""),  # mid tone
                 ("˨", ""),  # low tone
                 ("˩", ""),  # very low tone
-                ('\u030C', ""),  # rising tone
-                ('\u0302', ""),  # falling tone
-                ('⭧', ""),  # rising
-                ('⭨', ""),  # falling
-                ('⮃', ""),  # dipping
-                ('⮁', ""),  # peaking
-                ('̃', ""),  # nasalizing
+                ("\u030C", ""),  # rising tone
+                ("\u0302", ""),  # falling tone
+                ("⭧", ""),  # rising
+                ("⭨", ""),  # falling
+                ("⮃", ""),  # dipping
+                ("⮁", ""),  # peaking
+                ("̃", ""),  # nasalizing
             ]
         for replacement in replacements:
             phoneme_string = phoneme_string.replace(replacement[0], replacement[1])
@@ -445,10 +514,29 @@ def english_text_expansion(text):
     See https://github.com/keithito/tacotron/
     Careful: Only apply to english datasets. Different languages need different cleaners.
     """
-    _abbreviations = [(re.compile('\\b%s\\.' % x[0], re.IGNORECASE), x[1]) for x in
-                      [('Mrs.', 'misess'), ('Mr.', 'mister'), ('Dr.', 'doctor'), ('St.', 'saint'), ('Co.', 'company'), ('Jr.', 'junior'), ('Maj.', 'major'),
-                       ('Gen.', 'general'), ('Drs.', 'doctors'), ('Rev.', 'reverend'), ('Lt.', 'lieutenant'), ('Hon.', 'honorable'), ('Sgt.', 'sergeant'),
-                       ('Capt.', 'captain'), ('Esq.', 'esquire'), ('Ltd.', 'limited'), ('Col.', 'colonel'), ('Ft.', 'fort')]]
+    _abbreviations = [
+        (re.compile("\\b%s\\." % x[0], re.IGNORECASE), x[1])
+        for x in [
+            ("Mrs.", "misess"),
+            ("Mr.", "mister"),
+            ("Dr.", "doctor"),
+            ("St.", "saint"),
+            ("Co.", "company"),
+            ("Jr.", "junior"),
+            ("Maj.", "major"),
+            ("Gen.", "general"),
+            ("Drs.", "doctors"),
+            ("Rev.", "reverend"),
+            ("Lt.", "lieutenant"),
+            ("Hon.", "honorable"),
+            ("Sgt.", "sergeant"),
+            ("Capt.", "captain"),
+            ("Esq.", "esquire"),
+            ("Ltd.", "limited"),
+            ("Col.", "colonel"),
+            ("Ft.", "fort"),
+        ]
+    ]
     for regex, replacement in _abbreviations:
         text = re.sub(regex, replacement, text)
     return text
@@ -502,12 +590,18 @@ def get_language_id(language):
         return torch.LongTensor([17])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf = ArticulatoryCombinedTextFrontend(language="en")
-    tf.string_to_tensor("This is a complex sentence, it even has a pause! But can it do this? Nice.", view=True)
+    tf.string_to_tensor(
+        "This is a complex sentence, it even has a pause! But can it do this? Nice.",
+        view=True,
+    )
 
     tf = ArticulatoryCombinedTextFrontend(language="de")
-    tf.string_to_tensor("Alles klar, jetzt testen wir einen deutschen Satz. Ich hoffe es gibt nicht mehr viele unspezifizierte Phoneme.", view=True)
+    tf.string_to_tensor(
+        "Alles klar, jetzt testen wir einen deutschen Satz. Ich hoffe es gibt nicht mehr viele unspezifizierte Phoneme.",
+        view=True,
+    )
 
     tf = ArticulatoryCombinedTextFrontend(language="cmn")
     tf.string_to_tensor("这是一个复杂的句子，它甚至包含一个停顿。", view=True)
@@ -515,7 +609,9 @@ if __name__ == '__main__':
     tf.string_to_tensor("巴 拔 把 爸 吧", view=True)
 
     tf = ArticulatoryCombinedTextFrontend(language="vi")
-    tf.string_to_tensor("Xin chào thế giới, quả là một ngày tốt lành để học nói tiếng Việt!", view=True)
+    tf.string_to_tensor(
+        "Xin chào thế giới, quả là một ngày tốt lành để học nói tiếng Việt!", view=True
+    )
     tf.string_to_tensor("ba bà bá bạ bả bã", view=True)
 
     tf = ArticulatoryCombinedTextFrontend(language="fr")

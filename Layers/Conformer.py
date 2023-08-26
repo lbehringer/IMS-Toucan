@@ -45,9 +45,27 @@ class Conformer(torch.nn.Module):
 
     """
 
-    def __init__(self, idim, attention_dim=256, attention_heads=4, linear_units=2048, num_blocks=6, dropout_rate=0.1, positional_dropout_rate=0.1,
-                 attention_dropout_rate=0.0, input_layer="conv2d", normalize_before=True, concat_after=False, positionwise_conv_kernel_size=1,
-                 macaron_style=False, use_cnn_module=False, cnn_module_kernel=31, zero_triu=False, utt_embed=None, lang_embs=None):
+    def __init__(
+        self,
+        idim,
+        attention_dim=256,
+        attention_heads=4,
+        linear_units=2048,
+        num_blocks=6,
+        dropout_rate=0.1,
+        positional_dropout_rate=0.1,
+        attention_dropout_rate=0.0,
+        input_layer="conv2d",
+        normalize_before=True,
+        concat_after=False,
+        positionwise_conv_kernel_size=1,
+        macaron_style=False,
+        use_cnn_module=False,
+        cnn_module_kernel=31,
+        zero_triu=False,
+        utt_embed=None,
+        lang_embs=None,
+    ):
         super(Conformer, self).__init__()
 
         activation = Swish()
@@ -58,40 +76,60 @@ class Conformer(torch.nn.Module):
             self.pos_enc = RelPositionalEncoding(attention_dim, positional_dropout_rate)
         elif input_layer is None:
             self.embed = None
-            self.pos_enc = torch.nn.Sequential(RelPositionalEncoding(attention_dim, positional_dropout_rate))
+            self.pos_enc = torch.nn.Sequential(
+                RelPositionalEncoding(attention_dim, positional_dropout_rate)
+            )
         else:
             raise ValueError("unknown input_layer: " + input_layer)
 
         self.output_norm = LayerNorm(attention_dim)
         self.utt_embed = utt_embed
         if utt_embed is not None:
-            self.hs_emb_projection = torch.nn.Linear(attention_dim + utt_embed, attention_dim)
+            self.hs_emb_projection = torch.nn.Linear(
+                attention_dim + utt_embed, attention_dim
+            )
         if lang_embs is not None:
-            self.language_embedding = torch.nn.Embedding(num_embeddings=lang_embs, embedding_dim=attention_dim)
+            self.language_embedding = torch.nn.Embedding(
+                num_embeddings=lang_embs, embedding_dim=attention_dim
+            )
 
         # self-attention module definition
         encoder_selfattn_layer = RelPositionMultiHeadedAttention
-        encoder_selfattn_layer_args = (attention_heads, attention_dim, attention_dropout_rate, zero_triu)
+        encoder_selfattn_layer_args = (
+            attention_heads,
+            attention_dim,
+            attention_dropout_rate,
+            zero_triu,
+        )
 
         # feed-forward module definition
         positionwise_layer = MultiLayeredConv1d
-        positionwise_layer_args = (attention_dim, linear_units, positionwise_conv_kernel_size, dropout_rate,)
+        positionwise_layer_args = (
+            attention_dim,
+            linear_units,
+            positionwise_conv_kernel_size,
+            dropout_rate,
+        )
 
         # convolution module definition
         convolution_layer = ConvolutionModule
         convolution_layer_args = (attention_dim, cnn_module_kernel, activation)
 
-        self.encoders = repeat(num_blocks, lambda lnum: EncoderLayer(attention_dim, encoder_selfattn_layer(*encoder_selfattn_layer_args),
-                                                                     positionwise_layer(*positionwise_layer_args),
-                                                                     positionwise_layer(*positionwise_layer_args) if macaron_style else None,
-                                                                     convolution_layer(*convolution_layer_args) if use_cnn_module else None, dropout_rate,
-                                                                     normalize_before, concat_after))
+        self.encoders = repeat(
+            num_blocks,
+            lambda lnum: EncoderLayer(
+                attention_dim,
+                encoder_selfattn_layer(*encoder_selfattn_layer_args),
+                positionwise_layer(*positionwise_layer_args),
+                positionwise_layer(*positionwise_layer_args) if macaron_style else None,
+                convolution_layer(*convolution_layer_args) if use_cnn_module else None,
+                dropout_rate,
+                normalize_before,
+                concat_after,
+            ),
+        )
 
-    def forward(self,
-                xs,
-                masks,
-                utterance_embedding=None,
-                lang_ids=None):
+    def forward(self, xs, masks, utterance_embedding=None, lang_ids=None):
         """
         Encode input sequence.
         Args:
@@ -109,7 +147,9 @@ class Conformer(torch.nn.Module):
 
         if lang_ids is not None:
             lang_embs = self.language_embedding(lang_ids)
-            xs = xs + lang_embs  # offset phoneme representation by language specific offset
+            xs = (
+                xs + lang_embs
+            )  # offset phoneme representation by language specific offset
 
         xs = self.pos_enc(xs)
 
@@ -118,7 +158,9 @@ class Conformer(torch.nn.Module):
             xs = xs[0]
 
         if self.utt_embed:
-            xs = self._integrate_with_utt_embed(hs=xs, utt_embeddings=utterance_embedding)
+            xs = self._integrate_with_utt_embed(
+                hs=xs, utt_embeddings=utterance_embedding
+            )
 
         xs = self.output_norm(xs)
 
@@ -126,6 +168,10 @@ class Conformer(torch.nn.Module):
 
     def _integrate_with_utt_embed(self, hs, utt_embeddings):
         # concat hidden states with spk embeds and then apply projection
-        embeddings_expanded = torch.nn.functional.normalize(utt_embeddings).unsqueeze(1).expand(-1, hs.size(1), -1)
+        embeddings_expanded = (
+            torch.nn.functional.normalize(utt_embeddings)
+            .unsqueeze(1)
+            .expand(-1, hs.size(1), -1)
+        )
         hs = self.hs_emb_projection(torch.cat([hs, embeddings_expanded], dim=-1))
         return hs
