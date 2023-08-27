@@ -121,9 +121,6 @@ if __name__ == "__main__":
         "It is important to distinguish between dialect and accent.",
         "A dialect includes a certain variety of pronunciation, vocabulary, and grammar.",
         "In contrast, an accent only refers to the aspect of pronunciation.",
-        # "I have no sentence.",
-        # "I don't know what to say.",
-        # "Please someone give me the power to be creative.",
     ]
     sentence_dict["es"] = [
         "Hay gemas de gran valor en la tienda.",
@@ -143,22 +140,16 @@ if __name__ == "__main__":
         language = lang_emb
     # create output directory
     os.makedirs(f"audios/{model_id}", exist_ok=True)
-    filename_model_id = (
-        model_id if not args.model_checkpoint else f"{model_id}_{args.model_checkpoint}"
-    )
 
     speaker = (
         os.path.dirname(args.speaker_reference).split("/")[-1] + "-ref"
         if args.speaker_reference
         else ""
     )
-    filename = (
-        f"audios/{filename_model_id}/{language}-lang_{lang_emb}-emb-{speaker}.wav"
-    )
+    filename = f"audios/{model_id}/{language}-lang_{lang_emb}-emb-{speaker}.wav"
     print(f"Writing file to path: {filename}")
     read_texts(
         model_id=model_id,
-        model_checkpoint=args.model_checkpoint,
         sentence=sentence,
         filename=filename,
         language=language,
