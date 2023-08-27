@@ -97,7 +97,7 @@ def run(
         fine_tune=True if resume_checkpoint is None else finetune,
         resume=resume,
         phase_1_steps=5000,
-        phase_2_steps=1000,
+        phase_2_steps=0,
         use_wandb=use_wandb,
     )
     if use_wandb:
