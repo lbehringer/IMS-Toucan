@@ -1,5 +1,6 @@
 import itertools
 import os
+import glob
 
 import librosa.display as lbd
 import matplotlib.pyplot as plt
@@ -41,9 +42,27 @@ class PortaSpeechInterface(torch.nn.Module):
         self.device = device
         if not tts_model_path.endswith(".pt"):
             # default to shorthand system
-            tts_model_path = os.path.join(
+            best_tts_model_path = os.path.join(
                 MODELS_DIR, f"PortaSpeech_{tts_model_path}", "best.pt"
             )
+            # if `best.pt` doesn't exist, use highest-step checkpoint
+            if not os.path.exists(best_tts_model_path):
+                models = glob.glob(
+                    os.path.join(MODELS_DIR, f"PortaSpeech_{tts_model_path}", "*.pt")
+                )
+                checkpoint_steps = list()
+                for m in models:
+                    try:
+                        checkpoint_steps.append(
+                            int(os.path.basename(m).split(".")[0].split("_")[1])
+                        )
+                    except ValueError:
+                        continue
+                tts_model_path = os.path.join(
+                    MODELS_DIR,
+                    f"PortaSpeech_{tts_model_path}",
+                    f"checkpoint_{max(checkpoint_steps)}.pt",
+                )
         if vocoder_model_path is None:
             vocoder_model_path = os.path.join(MODELS_DIR, "Avocodo", "best.pt")
         self.use_signalprocessing = use_signalprocessing

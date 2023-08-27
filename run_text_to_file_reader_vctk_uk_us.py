@@ -17,13 +17,11 @@ def read_texts(
     lang_emb=None,
     speaker_reference=None,
     input_is_phones=False,
-    model_checkpoint=None,
 ):
     tts = PortaSpeechInterface(
         device=device,
         tts_model_path=model_id,
         language=language,
-        model_checkpoint=model_checkpoint,
     )
     print(f"Instantiated a PortaSpeechInterface object with language {language}.")
     tts.set_language(language)
@@ -42,11 +40,15 @@ def read_texts(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--accent",
-        help="Accent to use. Depending on the model, choices are accent-language combinations (e.g. 'es-en') or just languages (e.g. 'en')",
+        "--lang_emb",
+        help="Language embedding to use. Depending on the model, choices are accent-language combinations (e.g. 'es-en') or just languages (e.g. 'en')",
     )
     parser.add_argument("--language", help="Language to use (e.g. 'en')")
     parser.add_argument("--model_id", help="Name of the model to use (e.g. 'Meta')")
+    parser.add_argument(
+        "--models_prefix",
+        help="Set the prefix for all models that should be used for synthesis",
+    )
     parser.add_argument(
         "--input_is_phones",
         help="Bool whether the input is phones",
@@ -95,13 +97,17 @@ if __name__ == "__main__":
         else sentence_dict[language[-2:]]  # works for language at-de, hi-en, eu-es...
     )
 
-    models_prefix = "1uk_1us_"
+    models_prefix = args.models_prefix if args.models_prefix else "1uk_1us_"
+    print(f"models_prefix: {models_prefix}")
+    print(MODELS_DIR)
     models = glob.glob(os.path.join(MODELS_DIR, f"PortaSpeech_{models_prefix}*"))
     models = [os.path.basename(m).split("_", maxsplit=1)[1] for m in models]
-    print(models)
+    print(f"Using models: {models}")
     speaker_references = [
         "/mount/resources/speech/corpora/VCTK/wav48_silence_trimmed/p228/p228_003_mic1.flac",
+        "/mount/resources/speech/corpora/VCTK/wav48_silence_trimmed/p229/p229_003_mic1.flac",
         "/mount/resources/speech/corpora/VCTK/wav48_silence_trimmed/p299/p299_003_mic1.flac",
+        "/mount/resources/speech/corpora/VCTK/wav48_silence_trimmed/p300/p300_003_mic1.flac",
     ]
     g2ps = ["en", "en-gb"]
     embs = ["en-us", "en-gb", "en-mix"]
@@ -116,7 +122,6 @@ if __name__ == "__main__":
                     read_texts(
                         model_id=m,
                         device=exec_device,
-                        model_checkpoint=args.model_checkpoint,
                         sentence=sentence,
                         filename=filename,
                         language=g,
@@ -129,10 +134,9 @@ if __name__ == "__main__":
                 read_texts(
                     model_id=m,
                     device=exec_device,
-                    model_checkpoint=args.model_checkpoint,
                     sentence=sentence,
                     filename=filename,
                     language=g,
-                    accent=e,
+                    lang_emb=e,
                     input_is_phones=args.input_is_phones,
                 )
