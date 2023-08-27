@@ -87,6 +87,58 @@ def build_path_to_transcript_dict_multi_ling_librispeech_template(root):
     return limit_to_n(path_to_transcript)
 
 
+def build_path_to_transcript_dict_mls_franconian_german():
+    """Franconian"""
+    lang = "german"
+    root = f"/home/debehril/speech/dbwork/mul/spielwiese/SpeechCorpora/mls_2020/de/mls_{lang}_opus/train"
+    return limit_to_n(
+        build_path_to_transcript_dict_multi_ling_librispeech_speakerlist_template(
+            root, speakers=["2043"]
+        )
+    )
+
+
+def build_path_to_transcript_dict_multi_ling_librispeech_speakerlist_template(
+    root, speakers: list
+):
+    """
+    https://arxiv.org/abs/2012.03411
+    """
+    speakers = [str(speaker) for speaker in speakers]
+    path_to_transcript = dict()
+    with open(os.path.join(root, "transcripts.txt"), "r", encoding="utf8") as file:
+        lookup = file.read()
+    for line in lookup.split("\n"):
+        if line.strip() != "":
+            speaker = line.split("\t")[0].split("_")[0]
+            if speaker not in speakers:
+                continue
+            norm_transcript = line.split("\t")[1]
+            wav_folders = line.split("\t")[0].split("_")
+            wav_path = os.path.join(
+                root,
+                "audio",
+                wav_folders[0],
+                wav_folders[1],
+                line.split("\t")[0] + ".flac",
+            )
+            if os.path.exists(wav_path):
+                path_to_transcript[wav_path] = norm_transcript
+            else:
+                wav_path = os.path.join(
+                    root,
+                    "audio",
+                    wav_folders[0],
+                    wav_folders[1],
+                    line.split("\t")[0] + ".opus",
+                )
+                if os.path.exists(wav_path):
+                    path_to_transcript[wav_path] = norm_transcript
+                else:
+                    print(f"not found: {wav_path}")
+    return limit_to_n(path_to_transcript)
+
+
 def build_path_to_transcript_dict_karlsson():
     root = "/mount/resources/speech/corpora/HUI_German/Karlsson"
     return limit_to_n(build_path_to_transcript_dict_hui_template(root=root))
