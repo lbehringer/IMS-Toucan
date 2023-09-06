@@ -45,8 +45,10 @@ class PortaSpeechInterface(torch.nn.Module):
             best_tts_model_path = os.path.join(
                 MODELS_DIR, f"PortaSpeech_{tts_model_path}", "best.pt"
             )
+            if os.path.exists(best_tts_model_path):
+                tts_model_path = best_tts_model_path
             # if `best.pt` doesn't exist, use highest-step checkpoint
-            if not os.path.exists(best_tts_model_path):
+            else:
                 models = glob.glob(
                     os.path.join(MODELS_DIR, f"PortaSpeech_{tts_model_path}", "*.pt")
                 )

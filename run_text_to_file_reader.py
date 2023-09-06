@@ -1,6 +1,7 @@
 import os
-
+import argparse
 import torch
+from Utility.storage_config import MODELS_DIR
 
 from InferenceInterfaces.PortaSpeechInterface import PortaSpeechInterface
 
@@ -98,6 +99,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--speaker_reference", help="path of sample audio from reference speaker"
     )
+    parser.add_argument("--text", help="text that should be synthesized to speech")
     args = parser.parse_args()
     exec_device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"running on {exec_device}")
@@ -128,13 +130,16 @@ if __name__ == "__main__":
         "Para hacer hielo, echa más agua.",
         "Mandó la postal en un sobre de papel grueso.",
     ]
-    sentence = (
-        sentence_dict[language]
-        if language in sentence_dict
-        else sentence_dict["en"]
-        if language == "en-gb" or language == "en-us"
-        else sentence_dict[language[-2:]]  # works for language at-de, hi-en, eu-es...
-    )
+    if args.text:
+        sentence = args.text
+    else:
+        sentence = (
+            sentence_dict[language]
+            if language in sentence_dict
+            else sentence_dict["en"]
+            if language == "en-gb" or language == "en-us"
+            else sentence_dict[language[-2:]]  # works for language at-de, hi-en, eu-es...
+        )
     # set accent-specific language
     if language == "en" and lang_emb[:2] == "en":
         language = lang_emb
