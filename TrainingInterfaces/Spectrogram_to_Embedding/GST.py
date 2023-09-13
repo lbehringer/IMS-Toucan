@@ -214,8 +214,14 @@ class StyleTokenLayer(torch.nn.Module):
             Tensor: Style token embeddings (B, gst_token_dim).
         """
         batch_size = ref_embs.size(0)
-        # (num_tokens, token_dim) -> (batch_size, num_tokens, token_dim)
-        gst_embs = torch.tanh(self.gst_embs).unsqueeze(0).expand(batch_size, -1, -1)
+        # (num_tokens, token_dim) -> (batch_size, num_tokens, token_dim) 
+        # by default, num_tokens = 2000 (vs. only 10 in GST paper)        
+        gst_embs = torch.tanh(self.gst_embs).unsqueeze(0).expand(batch_size, -1, -1) 
+
+        ##############################################################
+        # weighting of individual tokens of gst_embs should happen here
+        ###############################################################
+
         # NOTE(kan-bayashi): Shoule we apply Tanh?
         ref_embs = ref_embs.unsqueeze(1)  # (batch_size, 1 ,ref_embed_dim)
         style_embs = self.mha(ref_embs, gst_embs, gst_embs, None)
